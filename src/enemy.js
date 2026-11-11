@@ -11,17 +11,17 @@ import { rayBoxes, rnd } from './world.js';
 import { Character } from './character.js';
 
 export const PROFILES = {
-  recruit: { label: 'RECRUIT', react: [0.8, 1.4], detect: 0.75, spread: 4.3, settle: 1.5, burst: [3, 6], pause: [0.6, 1.3], hold: [1.5, 4], memory: 8, searchPts: [1, 2], searchTime: 10, share: 12, radio: [3, 5.5], radioFail: 0.3, mistake: 0.3, decide: [0.9, 1.6], hear: 0.8,
-    hide: [1.8, 4.5], expose: [1.4, 3.2], glance: 0.15, switchSide: 0.1, peeks: [3, 6], flank: 0.05, suppress: 0, bound: false, nades: 0, investigate: 0.6, alarmDelay: [9, 16], alarmChance: 0.5, coverDelay: [1, 3] },
-  tactical: { label: 'TACTICAL', react: [0.42, 0.8], detect: 1, spread: 3.4, settle: 1.1, burst: [2, 4], pause: [0.35, 0.8], hold: [1.5, 3.5], memory: 15, searchPts: [3, 4], searchTime: 18, share: 20, radio: [1.4, 2.6], radioFail: 0.05, mistake: 0.1, decide: [0.55, 1], hear: 1,
+  recruit: { label: 'RECRUIT', react: [0.8, 1.4], detect: 0.75, spread: 4.0, settle: 1.5, burst: [3, 6], pause: [0.6, 1.3], hold: [1.5, 4], memory: 8, searchPts: [1, 2], searchTime: 10, share: 12, radio: [3, 5.5], radioFail: 0.3, mistake: 0.3, decide: [0.9, 1.6], hear: 0.8,
+    hide: [1.5, 3.6], expose: [1.4, 3.2], glance: 0.15, switchSide: 0.1, peeks: [3, 6], flank: 0.05, suppress: 0, bound: false, nades: 0, investigate: 0.6, alarmDelay: [9, 16], alarmChance: 0.5, coverDelay: [1.5, 3.5] },
+  tactical: { label: 'TACTICAL', react: [0.42, 0.8], detect: 1, spread: 3.0, settle: 1.1, burst: [2, 4], pause: [0.35, 0.8], hold: [1.5, 3.5], memory: 15, searchPts: [3, 4], searchTime: 18, share: 20, radio: [1.4, 2.6], radioFail: 0.05, mistake: 0.1, decide: [0.55, 1], hear: 1,
     hide: [0.8, 2.6], expose: [0.8, 1.8], glance: 0.35, switchSide: 0.3, peeks: [2, 4], flank: 0.35, suppress: 0.25, bound: false, nades: 0, investigate: 0.95, alarmDelay: [4, 8], alarmChance: 0.9, coverDelay: [0.2, 0.8] },
-  elite: { label: 'ELITE SQUAD', react: [0.3, 0.65], detect: 1.1, spread: 3.0, settle: 0.85, burst: [2, 4], pause: [0.3, 0.7], hold: [1, 3], memory: 22, searchPts: [4, 5], searchTime: 26, share: 26, radio: [0.8, 1.5], radioFail: 0, mistake: 0.06, decide: [0.4, 0.8], hear: 1.15,
+  elite: { label: 'ELITE SQUAD', react: [0.3, 0.65], detect: 1.1, spread: 2.7, settle: 0.85, burst: [2, 4], pause: [0.3, 0.7], hold: [1, 3], memory: 22, searchPts: [4, 5], searchTime: 26, share: 26, radio: [0.8, 1.5], radioFail: 0, mistake: 0.06, decide: [0.4, 0.8], hear: 1.15,
     hide: [0.5, 2.2], expose: [0.6, 1.4], glance: 0.45, switchSide: 0.45, peeks: [1, 3], flank: 0.6, suppress: 0.6, bound: true, nades: 1, investigate: 1, alarmDelay: [2, 4], alarmChance: 1, coverDelay: [0.1, 0.5] },
 };
 const TYPES = {
   guard: { name: 'Rifleman', aggr: 0.5, caut: 0.5 }, aggressor: { name: 'Pointman', aggr: 0.85, caut: 0.25 }, cautious: { name: 'Marksman', aggr: 0.25, caut: 0.85 },
 };
-export const DMG = 15; // enemy rifle damage per hit, identical in every mode
+export const DMG = 17; // enemy rifle damage per hit, identical in every mode
 
 const rr = (a) => rnd(a[0], a[1]), ri = (a) => Math.floor(rnd(a[0], a[1] + 1));
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 6.2832; while (d < -Math.PI) d += 6.2832; return d; };
@@ -185,7 +185,7 @@ export class Enemy {
     return true;
   }
   toHide(extra = 0) {
-    this.phase = 'hide'; this.hideT = rr(this.pr.hide) + extra; this.suppLeft = 0;
+    this.phase = 'hide'; this.hideT = rr(this.pr.hide) + extra; this.suppLeft = 0; this.extended = false;
     if ((this.peeks >= this.maxPeeks || this.wasHit) && !this.holdPost && this.g.sec.mayMove(this)) { // used up this position: relocate
       const tac = this.tac; this.takeCover(tac === 'flank' ? 'flank' : tac === 'push' ? 'push' : this.hp < 40 ? 'retreat' : 'hold');
     }
@@ -201,8 +201,8 @@ export class Enemy {
     const m = this.modesFor(s, this.lkp);
     if (!m) { this.bad.add(s.id); if (!this.takeCover(this.hp < 40 ? 'retreat' : 'hold')) this.engage(true); return; } // flanked: this cover no longer protects
     this.modes = m;
+    if (this.tryGrenade()) { this.hideT = 1.6; return; } // flush a player who went to ground before anyone has to push
     if (this.unseen > this.holdT && !this.holdPost && this.nextMove()) return;
-    if (this.tryGrenade()) { this.hideT = 1.6; return; }
     if (!m.length) { this.hideT = rnd(0.8, 1.6); this.waited++; if (this.waited > 2 && !this.holdPost && !this.takeCover('hold')) this.goInvestigate(this.lkp.x, this.lkp.z); return; }
     if (pr.mistake > 0.2 && Math.random() < pr.mistake * 0.4 && this.unseen < 3) { this.engage(true); this.openT = rnd(2, 4); return; } // recruits sometimes just step out
     let pick = m[Math.floor(Math.random() * m.length)];
@@ -421,6 +421,7 @@ export class Enemy {
           this.decT = rr(pr.decide);
           const hurt = this.hp < 40 && Math.random() < 0.5 + this.caut * 0.5;
           if (this.takeCover(hurt ? 'retreat' : this.tac === 'flank' ? 'flank' : 'hold')) break;
+          if (this.tryGrenade()) { this.openT = 1.2; break; }
           if (!this.seeing && this.unseen > this.holdT) { if (this.lkpAge > pr.memory) this.startSearch(this.lkp.x, this.lkp.z); else this.goInvestigate(this.lkp.x, this.lkp.z); break; }
           this.wantCrouch = Math.random() < 0.3 + this.caut * 0.3;
           if (Math.random() < 0.5) { const a = this.yaw + (Math.random() < 0.5 ? 1.57 : -1.57), c = G.world.nav.snap(this.pos.x - Math.sin(a) * 2.2, this.pos.z - Math.cos(a) * 2.2); if (c) this.goTo(c.x, c.z); } // sidestep
@@ -451,6 +452,7 @@ export class Enemy {
           else {
             if (this.seeing) this.blindT = 0; else { this.blindT += dt; suppress = this.suppLeft > 0 && this.lkpAge < 4 && this.blindT > 0.3; }
             if (this.blockT > 0.9) { this.modes = this.modes.filter((x) => x !== m); if (!this.modes.length) this.bad.add(s.id); this.peeks = 99; this.toHide(); } // no line of fire from here
+            else if (this.phaseT <= 0 && this.seeing && !this.extended && this.supp < 0.4 && this.ammo > 4 && Math.random() < 0.55) { this.extended = true; this.phaseT = rnd(0.5, 1.1); } // target still exposed: one more burst
             else if (this.phaseT <= 0 || this.ammo <= 0 || (this.blindT > 0.7 && !suppress)) this.toHide();
           }
         }

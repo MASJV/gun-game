@@ -198,6 +198,30 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('ai: reinforcements are finite', R.elite.total <= 13 && R.tactical.total <= 13, [R.tactical.total, R.elite.total]);
   });
 
+  await run('elite', async () => {
+    await start('warehouse', 'elite');
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}; P.hp = 1e6; const sq = G.enemies.slice(0, 3); G.enemies.forEach((e) => { if (!sq.includes(e)) { e.dead = true; e.found = true; e.ch.root.visible = false; } });
+      sq.forEach((e, i) => { e.release(); e.pos.set(28 + i * 3, 0, -13); e.yaw = e.baseYaw = Math.PI; e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.nades = 1; e.sync(); e.ch.refresh(); });
+      P.pos.set(30, 0, 3); P.yaw = 0; sim(5); o.engaged = sq.filter((e) => e.engaged()).length; o.roles = sq.map((e) => e.tac);
+      // grenade: only at a stale last-known position, never with an ally near it, limited stock, shared cooldown
+      const e = sq[0], V = G.v1.constructor; sq.forEach((x) => { x.percT = 1e9; x.los = false; x.seeing = false; x.state = 'COVER'; x.phase = 'hide'; x.hideT = 99; x.spot = x.spot || G.world.cover[0]; });
+      e.pos.set(30, 0, -13); e.sync(); e.ch.refresh(); e.lkp.set(30, 0, 3); e.hasLkp = true; e.lkpAge = 4; e.unseen = 4; G.sec.nadeCool = 0;
+      sq[1].pos.set(30, 0, 0); o.blockedByAlly = !e.tryGrenade(); sq[1].pos.set(34, 0, -13);
+      e.lkpAge = 0.5; o.blockedFresh = !e.tryGrenade(); e.lkpAge = 4;
+      o.thrown = e.tryGrenade(); let land = null; sim(4.2, () => { const n = G.gren.list.find((g) => g.owner === e); if (n) land = [n.pos.x, n.pos.z]; });
+      o.landErr = land ? +Math.hypot(land[0] - 30, land[1] - 3).toFixed(1) : -1; o.nadesLeft = e.nades; e.lkpAge = 4; e.nades = 1; o.cooldown = !e.tryGrenade();
+      // bounding rule: a squad member may only break cover while a team-mate is covering
+      sq.forEach((x) => { x.hasLkp = true; x.lkpAge = 1; x.state = 'COVER'; }); o.mayMoveCovered = G.sec.mayMove(sq[0]);
+      sq[1].state = 'MOVE'; sq[2].state = 'MOVE'; o.mayMoveAlone = G.sec.mayMove(sq[0]);
+      return o;
+    });
+    check('elite: squad members take different roles', new Set(o.roles.filter(Boolean)).size >= 2, o.roles);
+    check('elite: grenade only at a stale position, not near allies, lands near the last seen spot', o.blockedByAlly && o.blockedFresh && o.thrown && o.landErr >= 0 && o.landErr < 4.5, [o.blockedByAlly, o.blockedFresh, o.thrown, o.landErr]);
+    check('elite: grenades are limited (stock and shared cooldown)', o.nadesLeft === 0 && o.cooldown, [o.nadesLeft, o.cooldown]);
+    check('elite: bounding — may move while covered, must wait when nobody covers', o.mayMoveCovered === true && o.mayMoveAlone === false, [o.mayMoveCovered, o.mayMoveAlone]);
+  });
+
   await run('traversal', async () => {
     await start('forest', 'tactical');
     const o = await p.evaluate(() => {
