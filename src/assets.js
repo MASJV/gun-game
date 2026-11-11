@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-export const A = { models: {}, clips: {}, ready: false };
+export const A = { models: {}, clips: {}, parts: {}, ready: false };
 
 const MATS = { // material name in the gun pack -> PBR response
   Black: { c: 0x17191b, m: 0.35, r: 0.55 }, DarkMetal: { c: 0x2a2d31, m: 0.85, r: 0.42 }, Metal: { c: 0x60656b, m: 0.9, r: 0.35 }, LightMetal: { c: 0x9aa0a6, m: 0.95, r: 0.25 },
@@ -18,6 +18,20 @@ function tune(scene) {
     o.material = Array.isArray(o.material) ? o.material.map(fix) : fix(o.material);
   });
 }
+// Environment props: bake node transforms into geometry and switch to cheap Lambert materials so they can be instanced.
+function bake(name, scene) {
+  scene.updateMatrixWorld(true);
+  const parts = [], box = new THREE.Box3();
+  scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry.clone().applyMatrix4(o.matrixWorld), m = o.material, leaf = /Lea|Grass/.test(m.name);
+    g.computeBoundingBox(); box.union(g.boundingBox);
+    const mat = new THREE.MeshLambertMaterial({ map: m.map, color: m.map ? 0xffffff : m.color, alphaTest: leaf ? 0.45 : 0, side: leaf ? THREE.DoubleSide : THREE.FrontSide });
+    if (/Light/.test(m.name)) { mat.emissive = new THREE.Color(m.name === 'BrakeLight' ? 0x300000 : 0x000000); }
+    parts.push({ geo: g, mat, leaf });
+  });
+  A.parts[name] = { parts, box };
+}
 function decode(s) { const bin = atob(s), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
 
 export async function loadAssets(onProgress = () => {}) {
@@ -25,7 +39,7 @@ export async function loadAssets(onProgress = () => {}) {
   let n = 0;
   for (const k of names) {
     const g = await new Promise((res, rej) => L.parse(decode(src[k]), '', res, rej));
-    if (k === 'soldier') for (const c of g.animations) A.clips[c.name] = c; else tune(g.scene);
+    if (k === 'soldier') for (const c of g.animations) A.clips[c.name] = c; else if (k.startsWith('prop_')) bake(k.slice(5), g.scene); else tune(g.scene);
     A.models[k] = g.scene; onProgress(++n / names.length);
   }
   A.ready = true;

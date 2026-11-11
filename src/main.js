@@ -29,6 +29,12 @@ const G = {
 };
 G.camera.rotation.order = 'YXZ';
 window.__SP = G;
+G.debugRender = () => { // used by the perf probe in tools/: one synchronous frame, GPU flushed
+  const t0 = performance.now(), gl = renderer.getContext(); renderer.info.autoReset = false; renderer.info.reset();
+  renderer.setViewport(0, 0, innerWidth, innerHeight); renderer.clear(); renderer.render(G.scene, G.camera); renderer.clearDepth(); renderer.render(G.wscene, G.wcam);
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); renderer.info.autoReset = true;
+  return { ms: Math.round(performance.now() - t0), calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
+};
 try { const s = JSON.parse(localStorage.getItem('sp2_settings') || '{}'); if (s.sens) G.sens = s.sens; if (s.fov) G.fov = s.fov; if (s.quality) G.sel.quality = s.quality; if (s.vol != null) G.vol = s.vol; } catch (e) { /* defaults */ }
 const saveSettings = () => { try { localStorage.setItem('sp2_settings', JSON.stringify({ sens: G.sens, fov: G.fov, quality: G.sel.quality, vol: G.vol })); } catch (e) { /* ignore */ } };
 
@@ -127,7 +133,7 @@ G.reinforce = () => { // a finite response team walks in from the map edge farth
 // ---------- mission lifecycle ----------
 function disposeScene() {
   if (!G.world) return;
-  for (const m of G.world.meshes || []) { m.geometry.dispose(); m.material.dispose(); }
+  for (const m of G.world.meshes || []) { if (m.userData.shared) m.dispose(); else { m.geometry.dispose(); m.material.dispose(); } }
   G.audio.stopAmbient(); G.world = null; G.scene = null;
 }
 function interactable(kind, x, y, z) {
@@ -159,6 +165,7 @@ function startMission() {
   G.wlight = new THREE.HemisphereLight(0xaab8d0, 0x202428, 0.4); ws.add(G.wlight); const wd = new THREE.DirectionalLight(0xfff2e0, 0.75); wd.position.set(-1, 2, 1.5); ws.add(wd);
   const W = (G.world = buildWorld(G.sel.map, scene));
   if (G.sel.quality !== 'med') W.moon.shadow.mapSize.setScalar(G.sel.quality === 'high' ? 4096 : 1024);
+  if (G.sel.quality === 'low') for (const m of W.meshes) if (m.userData.detail) m.visible = false; // ground clutter off
   G.nvLight = new THREE.AmbientLight(0xffffff, 0); scene.add(G.nvLight);
   G.fx = new FX(scene); G.gren = new Grenades(G);
   G.player = new Player(G, W.spawn, G.loadout);

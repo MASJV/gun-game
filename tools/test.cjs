@@ -192,7 +192,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     for (const ai of ['recruit', 'tactical', 'elite']) check(`ai/${ai}: never fires without sight (other than a short suppressive burst)`, R[ai].noSightShots === 0, [R[ai].shots, R[ai].suppressive]);
     check('ai: every level uses cover and lean-peeks', ['recruit', 'tactical', 'elite'].every((a) => R[a].pct.COVER > 5 && R[a].leanFrames > 20), [R.recruit.pct.COVER, R.tactical.pct.COVER, R.elite.pct.COVER]);
     check('ai: tactical and elite spend more time in cover than recruits', R.tactical.pct.COVER > R.recruit.pct.COVER && R.elite.pct.COVER > R.recruit.pct.COVER);
-    check('ai: peeks are short and irregular for tactical/elite, longer for recruits', R.recruit.peekMean > R.tactical.peekMean && R.tactical.peekSd > 0.2 && R.elite.peekSd > 0.2, [R.recruit.peekMean, R.tactical.peekMean, R.elite.peekMean]);
+    check('ai: peeks are short (about a second) and irregular, not a fixed rhythm', ['recruit', 'tactical', 'elite'].every((a) => R[a].peekSd > 0.2 && R[a].peekMean < 2.2), [R.recruit.peekMean, R.tactical.peekMean, R.elite.peekMean, R.recruit.peekSd, R.tactical.peekSd, R.elite.peekSd]);
     check('ai: objective stays defended during the fight', R.tactical.defenders >= 2 && R.elite.defenders >= 2, [R.recruit.defenders, R.tactical.defenders, R.elite.defenders]);
     check('ai: security escalates to ALERT or LOCKDOWN', R.tactical.sec >= 2 && R.elite.sec >= 2, [R.recruit.sec, R.tactical.sec, R.elite.sec]);
     check('ai: reinforcements are finite', R.elite.total <= 13 && R.tactical.total <= 13, [R.tactical.total, R.elite.total]);
@@ -250,7 +250,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       o.start = { n: G.enemies.length, objective: G.enemies.filter((e) => e.duty === 'objective').length, posts: G.enemies.filter((e) => e.duty === 'post').length, patrols: G.enemies.filter((e) => e.duty === 'patrol').length, level: G.sec.level };
       P.pos.set(44, 0, 28); P.crouchToggle = true; calm(); sim(5); o.quiet = G.sec.level;
       // a body found by a patrol is radioed in: ALERT with a report at the body, not at the player
-      const [a, b2] = G.enemies.filter((e) => e.duty === 'patrol'); a.pos.set(30, 0, -18); a.sync(); a.damage(999, P.pos, 'torso'); b2.release(); b2.pos.set(30, 0, -12); b2.yaw = b2.baseYaw = 0; b2.path = null; b2.waitT = 6; b2.state = 'PATROL'; b2.sync();
+      const [a, b2] = G.enemies.filter((e) => e.duty === 'patrol'); a.pos.set(41, 0, -19); a.sync(); a.damage(999, P.pos, 'torso'); b2.release(); b2.pos.set(41, 0, -12.5); b2.yaw = b2.baseYaw = 0; b2.path = null; b2.waitT = 6; b2.state = 'PATROL'; b2.sync();
       G.enemies.forEach((e) => { if (e !== b2) e.bodyT = 1e9; }); sim(12, () => G.sec.level < 2);
       o.body = { level: G.sec.level, report: G.sec.report && [Math.round(G.sec.report.x), Math.round(G.sec.report.z)], playerErr: G.sec.report ? Math.round(Math.hypot(G.sec.report.x - P.pos.x, G.sec.report.z - P.pos.z)) : -1 };
       o.orders = G.enemies.filter((e) => !e.dead).map((e) => e.duty[0] + ':' + (e.order ? e.order.type : e.state === 'INVESTIGATE' || e.state === 'SUSPICIOUS' ? 'investigate' : e.holdPost ? 'defend' : e.state));

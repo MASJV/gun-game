@@ -14,10 +14,11 @@ Single source of truth for resuming V2 work. Read this first, then `git log --on
 
 ## Assets and licences
 All third-party art is **CC0 1.0** by Quaternius, fetched from the mirror `github.com/series-ai/jam-ready-assets`
-(each pack ships a License.txt there). No attribution is required; credit is given in README anyway.
-- Universal Animation Library 1 + 2 → `assets/soldier.glb` (mannequin mesh + 24 selected clips; finger/scale channels stripped).
-- Ultimate Guns pack → `assets/gun_*.glb`, `assets/acc_*.glb`.
-Everything else (textures, audio, UI, gear on the soldiers, optics, hands) is procedural.
+(each pack ships a License.txt there; files are Git LFS, fetched via media.githubusercontent.com). No attribution required; credited in README.
+- Universal Animation Library 1 + 2 -> `assets/soldier.glb` (mannequin mesh + 24 selected clips; finger/scale channels stripped).
+- Ultimate Guns pack -> `assets/gun_*.glb`, `assets/acc_*.glb`.
+- Stylized Nature + Zombie Apocalypse Kit (environment, vehicles) -> `assets/prop_*.glb` (textures 256 px WebP, normal maps dropped).
+Everything else (world textures, audio, UI, soldier gear, optics, hands) is procedural.
 
 ## Architecture (src/)
 - `assets.js` — decodes embedded GLBs, PBR material tuning, gun metadata (`GUN`), `makeGun()`.
@@ -49,19 +50,27 @@ Everything else (textures, audio, UI, gear on the soldiers, optics, hands) is pr
 - [x] M2 cover + lean-peek AI, nav heights + vault/climb links (enemies and player share routes)
 - [x] M3 security states, radio, alarm panel, squad coordinator, objective defence, finite reinforcements
 - [x] M4 loadouts (primary/secondary/knife), attachments, grenades/flash/smoke, medkit/stim, new menu + HUD
-- [ ] M5 map/visual/audio polish, balance, perf
+- [~] M5 polish: instanced CC0 props on both maps (trees, rocks, bushes, grass, containers, barrels, truck, barriers,
+      water tower), ACES tone mapping, merged soldier gear, quality presets. Remaining items below.
+
+## Performance notes
+- `G.debugRender()` (see main.js) renders one synchronous frame and returns ms / draw calls / triangles.
+- Forest (medium): ~1.4 M triangles incl. shadow pass, ~350 draw calls. Warehouse: ~0.4 M, ~250.
+  Trees are the cost (3.1-3.4 k triangles each, meshopt could not simplify the leaf cards); foliage does not cast shadows,
+  a shadow-only cone per tree stands in. Props are instanced per 48 m chunk so they frustum-cull.
+- Not measured on a real GPU (the test environment has software GL only).
 
 ## Verification so far
-`npm test` — 48/48 checks pass (headless Chromium, software GL): menu, movement, lean, mantle, all six guns,
-attachments, hit zones, knife, frag/flash/smoke, medical, wall/LOS fairness, per-profile fight statistics,
-vault/climb traversal, body discovery -> ALERT -> alarm runner -> LOCKDOWN -> reinforcements, both missions, restart/pause.
+`npm test` — 52 checks (headless Chromium, software GL): menu, movement, lean, mantle, all six guns, attachments,
+hit zones, knife, frag/flash/smoke, medical, wall/LOS fairness, per-profile fight statistics, elite grenade and
+bounding rules, vault/climb traversal, body discovery -> ALERT -> alarm runner -> LOCKDOWN -> reinforcements,
+both missions, restart/pause, repeated missions.
 Not verified: real-GPU frame rate, audio by ear, a full hand-played mission.
 
 ## TODO (prioritised)
-1. Balance pass: recruit damage output is very low; check elite grenade usage actually triggers in play.
-2. M5 visuals: replace primitive trees/props with CC0 GLB props (jam-ready-assets: quaternius-stylized-nature,
-   quaternius-zombie-apocalypse/Environment), better materials/lighting, security checkpoint dressing.
-3. README rewrite for V2; credits.
-4. Audio polish (spatial enemy footsteps, alarm), optional player settings (crouch toggle).
-5. Known rough edges: no reload animation beyond weapon tilt + left hand; left-hand IK can look stiff in low-ready;
-   enemies do not open fire while moving; corpses are not removed.
+1. Real-hardware playtest: frame rate in the forest, enemy lethality/balance per level, viewmodel feel.
+2. If the forest is too heavy: cut interior trees (world.js `placed.length < 150`) or add a low-poly tree LOD.
+3. Enemy visuals: the mannequin has no face/cloth detail; gear is box-based. A textured CC0 soldier would be better.
+4. Animation gaps: no dedicated reload/vault clips for rifles (pistol clips + procedural), enemies do not fire while moving.
+5. Audio: enemy footsteps are not audible to the player; alarm siren is a simple oscillator.
+6. Corpses persist (by design for body discovery) but are never cleaned up in very long sessions.

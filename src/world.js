@@ -1,5 +1,6 @@
 // World construction: merged static geometry, AABB colliders, ray tests, nav grid, both maps.
 import * as THREE from 'three';
+import { A } from './assets.js';
 
 export const rnd = (a = 1, b) => (b === undefined ? Math.random() * a : a + Math.random() * (b - a));
 export const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -67,7 +68,20 @@ function M(x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) {
 }
 
 class Builder {
-  constructor() { this.b = {}; this.col = []; this.rng = seeded(4242); }
+  constructor() { this.b = {}; this.col = []; this.rng = seeded(4242); this.inst = {}; this.canopy = []; }
+  // instanced CC0 prop (see assets.js bake); o.col: true = collider from the model bounds, o.tint: colour multiplier, o.shadow: false to skip
+  prop(name, x, y, z, ry = 0, s = 1, o = {}) {
+    const P = A.parts[name]; if (!P) return null;
+    const sx = Array.isArray(s) ? s[0] : s, sy = Array.isArray(s) ? s[1] : s, sz = Array.isArray(s) ? s[2] : s;
+    const k = name + '|' + Math.floor((x + 200) / 48) + '|' + Math.floor((z + 200) / 48) + (o.shadow === false ? '|n' : '');
+    (this.inst[k] || (this.inst[k] = { name, shadow: o.shadow !== false, list: [] })).list.push({ m: M(x, y, z, 0, ry, 0, sx, sy, sz), tint: o.tint });
+    if (o.col) {
+      const b = P.box, cs = Math.abs(Math.cos(ry)), sn = Math.abs(Math.sin(ry)), k2 = o.shrink ?? 1;
+      const hx = (Math.max(Math.abs(b.min.x), Math.abs(b.max.x)) * sx * cs + Math.max(Math.abs(b.min.z), Math.abs(b.max.z)) * sz * sn) * k2, hz = (Math.max(Math.abs(b.min.x), Math.abs(b.max.x)) * sx * sn + Math.max(Math.abs(b.min.z), Math.abs(b.max.z)) * sz * cs) * k2;
+      this.collider(x - hx, y, z - hz, x + hx, y + b.max.y * sy * (o.shrinkY ?? 1), z + hz, o);
+    }
+    return P;
+  }
   buf(k) { return this.b[k] || (this.b[k] = { p: [], n: [], u: [], c: [] }); }
   color(hex, tint) {
     const c = new THREE.Color(hex), v = tint === 0 ? 1 : 1 + (this.rng() - 0.5) * (tint ?? 0.14);
@@ -126,6 +140,20 @@ class Builder {
       mesh.castShadow = k !== 'emis' && k !== 'fence'; mesh.receiveShadow = k !== 'emis';
       mesh.frustumCulled = false;
       scene.add(mesh); out.push(mesh);
+    }
+    const white = new THREE.Color(1, 1, 1), c = new THREE.Color();
+    for (const k in this.inst) {
+      const I = this.inst[k];
+      for (const part of A.parts[I.name].parts) {
+        const im = new THREE.InstancedMesh(part.geo, part.mat, I.list.length);
+        I.list.forEach((it, i) => { im.setMatrixAt(i, it.m); im.setColorAt(i, it.tint ? c.setHex(it.tint) : white); });
+        im.castShadow = I.shadow && !part.leaf; im.receiveShadow = !part.leaf; im.userData.detail = /grass|fern/.test(I.name); im.computeBoundingSphere(); im.userData.shared = true;
+        scene.add(im); out.push(im);
+      }
+    }
+    if (this.canopy.length) { // foliage shadows from simple cones: drawn into the shadow map only
+      const im = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), this.canopy.length);
+      this.canopy.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = true; im.frustumCulled = false; scene.add(im); out.push(im);
     }
     return out;
   }
@@ -363,6 +391,7 @@ function room(B, tex, hex, x0, z0, x1, z1, h, d = {}, t = 0.3) {
 }
 function crate(B, x, z, s = 1, y = 0, hex = 0x5d4c34) { B.box('wood', hex, x, y, z, s, s, s, { rot: 0 }); }
 function barrel(B, x, z, hex = 0x4a5a48) {
+  if (B.prop('barrel', x, 0, z, B.rng() * 6, 0.92, { tint: hex === 0x4a5a48 ? 0x8a9a80 : 0xffffff })) return B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1.05, z + 0.33);
   B.geo('metal', hex, new THREE.CylinderGeometry(0.33, 0.33, 1, 10), M(x, 0.5, z));
   B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1, z + 0.33);
 }
@@ -373,44 +402,54 @@ function sandbags(B, x, z, len, alongX) {
 }
 function container(B, x, z, alongX, hex, stack = 1) {
   const w = alongX ? 6.1 : 2.5, d = alongX ? 2.5 : 6.1;
-  for (let i = 0; i < stack; i++) B.box('metal', hex, x + (i ? 0.15 : 0), i * 2.6, z, w, 2.6, d, { tint: 0.2 });
+  for (let i = 0; i < stack; i++) {
+    const ox = i ? 0.15 : 0;
+    if (B.prop((hex >> 4) % 2 ? 'container_red' : 'container_green', x + ox, i * 2.6 - 0.04, z, alongX ? 0 : Math.PI / 2, [6.1 / 5.71, 1, 2.5 / 2.56], { tint: [0xb0b4b8, 0x8e9498, 0xa4a098][(hex >> 8) % 3] })) B.collider(x + ox - w / 2, i * 2.6, z - d / 2, x + ox + w / 2, i * 2.6 + 2.6, z + d / 2);
+    else B.box('metal', hex, x + ox, i * 2.6, z, w, 2.6, d, { tint: 0.2 });
+  }
 }
 function truck(B, x, z, rot, hex = 0x3d4532, cover = 0x4f5340) {
   const cs = Math.cos(rot), sn = Math.sin(rot), L = (lx, lz) => [x + lx * cs + lz * sn, z - lx * sn + lz * cs];
+  const ex = Math.abs(cs) * 1.3 + Math.abs(sn) * 3.3, ez = Math.abs(sn) * 1.3 + Math.abs(cs) * 3.3, [cx, cz] = L(0, -0.5);
+  B.collider(cx - ex, 0, cz - ez, cx + ex, 2.9, cz + ez);
+  if (B.prop('vehicle_truck', x, 0, z, rot, 1.18, { tint: hex === 0x3d4532 ? 0x5e6650 : 0x70757c })) return;
   const part = (k, h, lx, y, lz, w, hh, d) => { const [px, pz] = L(lx, lz); B.box(k, h, px, y, pz, w, hh, d, { rot, col: false }); };
   part('plain', 0x1c1d1f, 0, 0.55, 0, 1.2, 0.35, 6.2);
   part('plain', hex, 0, 0.9, -2.3, 2.3, 1.75, 1.7); part('plain', hex, 0, 0.9, -3.5, 2.1, 0.9, 0.9);
-  part('plain', 0x11161a, 0, 1.75, -3.16, 1.9, 0.7, 0.04);
   part('plain', hex, 0, 0.95, 1.0, 2.4, 0.25, 4.3); part('plain', cover, 0, 1.2, 1.0, 2.3, 1.6, 4.2);
-  for (const lz of [-2.6, 0.3, 2.2]) for (const lx of [-1.05, 1.05]) {
-    const [px, pz] = L(lx, lz);
-    B.geo('plain', 0x101112, new THREE.CylinderGeometry(0.5, 0.5, 0.35, 10), M(px, 0.5, pz, 0, rot, Math.PI / 2));
-  }
-  const ex = Math.abs(cs) * 1.2 + Math.abs(sn) * 3.3, ez = Math.abs(sn) * 1.2 + Math.abs(cs) * 3.3, [cx, cz] = L(0, -0.4);
-  B.collider(cx - ex, 0, cz - ez, cx + ex, 2.8, cz + ez);
 }
+const TREES = ['pine_1', 'pine_2'];
 function tree(B, x, z, col = true) {
   const r = B.rng, h = 7 + r() * 5, tr = 0.2 + r() * 0.16;
+  if (A.parts.pine_1) {
+    const k = col ? TREES[Math.floor(r() * TREES.length)] : 'pine_2', s = 1.25 + r() * 0.55;
+    B.prop(k, x, -0.1, z, r() * 6.283, s, { shadow: col, tint: [0x5c6c62, 0x52625a, 0x4a5850][Math.floor(r() * 3)] });
+    if (col) B.canopy.push(M(x, 4.6 * s, z, 0, 0, 0, 2.3 * s, 5.2 * s, 2.3 * s)); // cheap shadow-only stand-in for the foliage
+    if (col) B.collider(x - 0.3, 0, z - 0.3, x + 0.3, 6, z + 0.3);
+    return;
+  }
   B.geo('wood', 0x35291f, new THREE.CylinderGeometry(tr * 0.55, tr, h, 6), M(x, h / 2, z), { uv: 2 });
   if (col) B.collider(x - tr, 0, z - tr, x + tr, h, z + tr);
-  if (r() < 0.72) {
-    for (let i = 0; i < 3; i++) {
-      const y = h * 0.34 + i * h * 0.22, rad = (2.5 - i * 0.65) * (0.8 + r() * 0.4);
-      B.geo('grass', 0x1b2d1c, new THREE.ConeGeometry(rad, h * 0.36, 7), M(x, y + h * 0.18, z, 0, r() * 6, 0), { uv: 3 });
-    }
-  } else
-    for (let i = 0; i < 3; i++)
-      B.geo('grass', 0x263a20, new THREE.IcosahedronGeometry(1.5 + r() * 0.9, 0), M(x + (r() - 0.5) * 1.8, h * 0.78 + (r() - 0.5) * 1.6, z + (r() - 0.5) * 1.8), { uv: 2 });
+  for (let i = 0; i < 3; i++) {
+    const y = h * 0.34 + i * h * 0.22, rad = (2.5 - i * 0.65) * (0.8 + r() * 0.4);
+    B.geo('grass', 0x1b2d1c, new THREE.ConeGeometry(rad, h * 0.36, 7), M(x, y + h * 0.18, z, 0, r() * 6, 0), { uv: 3 });
+  }
 }
 function rock(B, x, z, s, col = true) {
   const r = B.rng, sx = s * (0.8 + r() * 0.5), sy = s * (0.6 + r() * 0.5), sz = s * (0.8 + r() * 0.5);
+  if (A.parts.rock_medium_1) {
+    const k = 'rock_medium_' + (1 + Math.floor(r() * 3)), b = A.parts[k].box, f = 2 / (b.max.x - b.min.x), ry = Math.floor(r() * 4) * Math.PI / 2;
+    B.prop(k, x, -0.12 * sy, z, ry, [sx * f, sy * 0.95 / b.max.y, sz * f], { tint: 0x7a8086 });
+    if (col) B.collider(x - sx * 0.78, 0, z - sz * 0.78, x + sx * 0.78, sy * 0.9, z + sz * 0.78);
+    return;
+  }
   B.geo('concrete', 0x474b4c, new THREE.DodecahedronGeometry(1, 0), M(x, sy * 0.3, z, r() * 3, r() * 3, r() * 3, sx, sy, sz), { uv: 2 });
   if (col) B.collider(x - sx * 0.72, 0, z - sz * 0.72, x + sx * 0.72, sy * 0.95, z + sz * 0.72);
 }
 function bush(B, x, z) {
   const r = B.rng;
-  for (let i = 0; i < 3; i++)
-    B.geo('grass', 0x22351f, new THREE.IcosahedronGeometry(0.65 + r() * 0.35, 0), M(x + (r() - 0.5) * 0.9, 0.5 + r() * 0.3, z + (r() - 0.5) * 0.9, r() * 3, r() * 3, 0), { uv: 2 });
+  if (!B.prop('bush_common', x, -0.05, z, r() * 6.283, [0.85 + r() * 0.3, 0.8 + r() * 0.25, 0.85 + r() * 0.3], { shadow: false, tint: 0x6a7662 }))
+    for (let i = 0; i < 3; i++) B.geo('grass', 0x22351f, new THREE.IcosahedronGeometry(0.65 + r() * 0.35, 0), M(x + (r() - 0.5) * 0.9, 0.5 + r() * 0.3, z + (r() - 0.5) * 0.9, r() * 3, r() * 3, 0), { uv: 2 });
   B.collider(x - 0.8, 0, z - 0.8, x + 0.8, 1.3, z + 0.8, { solid: false, bullet: false });
 }
 function light(W, scene, hex, intensity, dist, x, y, z, dyn) {
@@ -504,13 +543,13 @@ function forest(B, W, scene) {
     return true;
   };
   const placed = [];
-  for (let i = 0; i < 900 && placed.length < 250; i++) {
+  for (let i = 0; i < 900 && placed.length < 150; i++) {
     const x = (r() - 0.5) * 114, z = (r() - 0.5) * 114;
-    if (!ok(x, z) || placed.some((p) => Math.hypot(p[0] - x, p[1] - z) < 2.6)) continue;
+    if (!ok(x, z) || placed.some((p) => Math.hypot(p[0] - x, p[1] - z) < 3.4)) continue;
     placed.push([x, z]); tree(B, x, z);
   }
-  for (let i = 0; i < 150; i++) { // dense border beyond the playable edge
-    const a = (i / 150) * 6.283, rad = 60 + r() * 9, c = Math.cos(a), s = Math.sin(a), k = rad / Math.max(Math.abs(c), Math.abs(s));
+  for (let i = 0; i < 46; i++) { // tree line beyond the playable edge
+    const a = (i / 46) * 6.283, rad = 60 + r() * 9, c = Math.cos(a), s = Math.sin(a), k = rad / Math.max(Math.abs(c), Math.abs(s));
     tree(B, c * k, s * k, false);
   }
   for (let i = 0, n = 0; i < 200 && n < 24; i++) { const x = (r() - 0.5) * 108, z = (r() - 0.5) * 108; if (ok(x, z, 1)) { rock(B, x, z, 1 + r() * 1.3); n++; } }
@@ -523,6 +562,13 @@ function forest(B, W, scene) {
     B.collider(x - ex, 0, z - ez, x + ex, 0.75, z + ez); n++;
   }
   for (let i = 0, n = 0; i < 300 && n < 55; i++) { const x = (r() - 0.5) * 110, z = (r() - 0.5) * 110; if (ok(x, z, 0.5)) { bush(B, x, z); n++; } }
+  for (let i = 0; i < 520; i++) { const x = (r() - 0.5) * 112, z = (r() - 0.5) * 112; if (ok(x, z, -1.5)) B.prop('grass_common_short', x, 0, z, r() * 6.283, [0.7 + r() * 0.6, 0.35 + r() * 0.3, 0.7 + r() * 0.6], { shadow: false, tint: 0x50604a }); }
+  for (let i = 0; i < 110; i++) { const x = (r() - 0.5) * 108, z = (r() - 0.5) * 108; if (ok(x, z, 0)) B.prop('fern_1', x, 0, z, r() * 6.283, 0.09 + r() * 0.05, { shadow: false, tint: 0x5a6a52 }); }
+  // outpost dressing: water tower, tyre stacks, pallets and road barriers at the gate (low enough to vault)
+  if (B.prop('watertower', 15.5, 0, -13.5, 0, 0.85, { tint: 0x8a8f94 })) B.collider(14.4, 0, -14.6, 16.6, 8, -12.4);
+  B.prop('wheels_stack', -16.8, 0, -16, 0.4, 1.5, { col: true, shrink: 0.9 }); B.prop('wheels_stack', 12.5, 0, -15.8, 1.2, 1.5, { col: true, shrink: 0.9 });
+  B.prop('pallet', -2, 0, -20.5, 0, 1.4, {}); B.prop('pallet', 10.5, 0, -12.1, 0.2, 1.7, {});
+  B.prop('trafficbarrier_1', -1.9, 0, 9.5, 0.15, 1, { col: true, shrink: 0.85, sight: false, bullet: false }); B.prop('trafficbarrier_1', 2.2, 0, 12.5, -0.1, 1, { col: true, shrink: 0.85, sight: false, bullet: false });
   for (const [x0, z0, x1, z1] of [[-59, -59, 59, -58], [-59, 58, 59, 59], [-59, -59, -58, 59], [58, -59, 59, 59]]) B.collider(x0, 0, z0, x1, 12, z1, { sight: false });
   return {
     name: 'FOREST OUTPOST', bounds: { x0: -60, x1: 60, z0: -60, z1: 60 }, spawn: { x: -6.6, z: 54, yaw: 0 },
@@ -624,6 +670,13 @@ function warehouse(B, W, scene) {
   B.box('metal', 0x35513a, -38, 0, 7.5, 1.4, 1.3, 2.4); B.box('metal', 0x35513a, -12, 0, -30.2, 2.4, 1.3, 1.4); B.box('metal', 0x35513a, 6, 0, 30.2, 2.4, 1.3, 1.4);
   crate(B, -25, 30.3, 1.2); crate(B, 14, -30.3, 1.2); crate(B, -40, 13, 1.1); crate(B, 44, -8, 1.2); crate(B, 23, -27, 1.2); barrel(B, 22.5, 14.5); barrel(B, -45.5, 10);
   sandbags(B, 24.5, -10, 3, false); sandbags(B, 24.5, 10, 3, false);
+  // industrial dressing: plastic barriers (vaultable cover), pipe stacks, cinder blocks, pallets, tyres, street lights
+  for (const [x, z, ry] of [[33, 2, 0], [34.8, 2.2, 0.1], [29, -17, 1.57], [-39.5, -3, 1.57], [-10, 29.6, 0], [10, -29.4, 0], [-4, 5.5, 0], [-2.2, 5.6, 0.05], [-4.5, -6, 0]])
+    B.prop('plasticbarrier', x, 0, z, ry, 1.65, { col: true, shrink: 0.9 });
+  for (const [x, z, ry] of [[-18.6, 7, 0], [18.6, -20, 0], [-33.5, 24, 1.57], [43, 12, 0], [-45.6, -3, 0]]) B.prop('pipes', x, 0, z, ry, 1.5, { col: true, shrink: 0.92 });
+  for (const [x, z] of [[-3.2, -12], [15, 6.5], [-31.5, 2], [38, -26], [-22.5, 12.2]]) { B.prop('pallet', x, 0, z, r() * 0.4, 1.5, {}); B.prop('cinderblock', x - 0.2, 0.2, z, 0.2, 1.6, {}); B.prop('cinderblock', x + 0.4, 0.2, z + 0.3, 1.4, 1.6, {}); }
+  B.prop('wheels_stack', 22.3, 0, -18.5, 0, 1.6, { col: true, shrink: 0.9 }); B.prop('wheels_stack', -46, 0, 14, 0.5, 1.6, { col: true, shrink: 0.9 }); B.prop('wheels_stack', 17.8, 0, 17, 0.9, 1.6, { col: true, shrink: 0.9 });
+  B.prop('streetlights', 31, 0, -11, Math.PI / 2, 0.92, {}); B.prop('streetlights', 35, 0, 14, Math.PI / 2, 0.92, {});
   B.box('emis', 0x163a20, -43, 0, 4, 3.4, 0.03, 3.4, { col: false, tint: 0 });
   return {
     name: 'INDUSTRIAL WAREHOUSE', bounds: { x0: -48, x1: 48, z0: -32, z1: 32 }, spawn: { x: 44.5, z: 27, yaw: Math.PI / 2 },

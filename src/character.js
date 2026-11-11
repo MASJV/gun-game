@@ -4,6 +4,7 @@
 // - hit zones are built from the live bone positions, so what is visibly exposed is what can be hit
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { A, makeGun } from './assets.js';
 
 const LOWER = /^(root|pelvis|thigh|calf|foot|ball)/;
@@ -33,9 +34,9 @@ function init() {
     const nm = bones[b].name;
     region[i] = /^(Head|neck)/.test(nm) ? 2 : /^(hand|index|middle|ring|pinky|thumb)/.test(nm) ? 3 : /^(foot|ball)/.test(nm) ? 4 : /^(thigh|calf|pelvis)/.test(nm) ? 1 : 0;
   }
-  const rest = {}; for (const b of bones) rest[b.name] = b.getWorldPosition(new THREE.Vector3());
+  const rest = {}, boneRest = {}; for (const b of bones) { rest[b.name] = b.getWorldPosition(new THREE.Vector3()); boneRest[b.name] = b.matrixWorld.clone(); }
   const F = Math.sign(rest.ball_l.z - rest.foot_l.z) || 1; // which way the model faces along Z
-  T = { body, meshes, region, rest, F, geos: {}, clips: {}, mats: {} };
+  T = { body, meshes, region, rest, boneRest, F, geos: {}, clips: {}, mats: {}, gear: {} };
   for (const k in LOCO) { T.clips[k] = subclip(LOCO[k], true); T.clips[k + 'U'] = subclip(LOCO[k], false); }
   for (const k in UPPER) T.clips[k] = subclip(UPPER[k], false);
   for (const k of UONE) T.clips[k] = subclip(k, false);
@@ -49,7 +50,7 @@ function init() {
   T.gunPos = new THREE.Vector3(0, -0.035, 0.075 * F).applyQuaternion(hq);
   T.mats.joint = new THREE.MeshStandardMaterial({ color: 0x141517, roughness: 0.95, metalness: 0 });
   T.mats.body = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
-  T.mats.glass = new THREE.MeshStandardMaterial({ color: 0x0b0f12, roughness: 0.15, metalness: 0.8 });
+  T.mats.gear = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.05 });
   T.mats.flash = new THREE.MeshBasicMaterial({ color: 0xffd890, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
   T.geo = { helmet: new THREE.SphereGeometry(0.128, 14, 10, 0, 6.283, 0, 1.75), box: new THREE.BoxGeometry(1, 1, 1), flash: new THREE.OctahedronGeometry(0.09, 0) };
 }
@@ -63,7 +64,6 @@ function bodyGeo(pal) {
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return (T.geos[pal] = g);
 }
-const gearMat = (hex) => T.mats['g' + hex] || (T.mats['g' + hex] = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.85, metalness: 0.05 }));
 
 // rotate a bone by a world-space delta rotation
 function rotWorld(bone, q) {
@@ -95,9 +95,9 @@ export class Character {
       if (o.isSkinnedMesh) { const main = o.geometry === T.body.geometry; o.geometry = main ? bodyGeo(palette) : o.geometry; o.material = main ? T.mats.body : T.mats.joint; o.castShadow = true; o.frustumCulled = false; }
     });
     inner.updateMatrixWorld(true);
-    this.dress(PALETTES[palette]);
+    this.dress(palette);
     // weapon in the right hand
-    const gun = (this.gun = makeGun(gunId)); gun.quaternion.copy(T.gunQuat); gun.position.copy(T.gunPos); this.bones.hand_r.add(gun);
+    const gun = (this.gun = makeGun(gunId)); gun.traverse((o) => { o.castShadow = false; }); gun.quaternion.copy(T.gunQuat); gun.position.copy(T.gunPos); this.bones.hand_r.add(gun);
     this.flash = new THREE.Mesh(T.geo.flash, T.mats.flash); this.flash.position.copy(gun.muzzle).z -= 0.08; this.flash.scale.set(1, 1, 2.2); this.flash.visible = false; gun.add(this.flash);
     this.gripL = gun.pt(gun.def.hand); this.gripL.y -= 0.035; this.gripL.z += 0.03;
     // animation
@@ -110,26 +110,30 @@ export class Character {
     this.uOne = null; this.fOne = null; this.dead = false; this.lean = 0; this.kick = 0; this.flashT = 0; this.aimW = 0; this.crouchW = 0; this.ikW = 0; this.zones = null; this.zoneFrame = -1;
     mx.update(0.01);
   }
-  dress(P) {
-    const R = T.rest, F = T.F, add = (bone, geo, mat, x, y, z, sx, sy, sz, rx = 0) => {
-      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z * F); m.scale.set(sx, sy, sz); m.rotation.x = rx * F; m.castShadow = true;
-      this.inner.add(m); m.updateMatrixWorld(true); this.bones[bone].attach(m); return m;
-    };
-    const B = T.geo.box, gm = gearMat(P.gear), hm = gearMat(P.helmet), dk = gearMat(0x0d0e0f), h = R.Head, c = R.spine_03, p = R.pelvis;
-    add('Head', T.geo.helmet, hm, h.x, h.y + 0.105, h.z + 0.005, 1, 1.02, 1.12);                 // helmet shell
-    add('Head', B, hm, h.x, h.y + 0.085, h.z + 0.118, 0.2, 0.025, 0.07);                          // brim
-    add('Head', B, T.mats.glass, h.x, h.y + 0.062, h.z + 0.108, 0.17, 0.05, 0.03);                // goggles
-    add('Head', B, dk, h.x, h.y + 0.165, h.z + 0.11, 0.05, 0.05, 0.05);                           // NVG mount
-    for (const s of [-1, 1]) add('Head', B, dk, h.x + s * 0.118, h.y + 0.06, h.z + 0.0, 0.035, 0.08, 0.07); // ear protection
-    add('spine_03', B, gm, c.x, c.y - 0.02, c.z + 0.085, 0.33, 0.36, 0.09);                       // front plate
-    add('spine_03', B, gm, c.x, c.y - 0.02, c.z - 0.105, 0.32, 0.36, 0.08);                       // back plate
-    for (const s of [-1, 1]) add('spine_03', B, gm, c.x + s * 0.13, c.y + 0.17, c.z - 0.01, 0.06, 0.03, 0.2); // shoulder straps
-    for (const s of [-1, 0, 1]) add('spine_03', B, dk, c.x + s * 0.095, c.y - 0.11, c.z + 0.145, 0.075, 0.15, 0.05); // magazine pouches
-    add('spine_03', B, dk, c.x - 0.09, c.y + 0.05, c.z - 0.165, 0.11, 0.17, 0.06);                // radio
-    add('spine_03', B, dk, c.x - 0.09, c.y + 0.2, c.z - 0.165, 0.012, 0.16, 0.012);               // antenna
-    add('pelvis', B, dk, p.x, p.y + 0.06, p.z, 0.37, 0.06, 0.25);                                  // belt
-    add('thigh_r', B, dk, R.thigh_r.x + 0.085 * Math.sign(R.thigh_r.x), R.thigh_r.y - 0.14, R.thigh_r.z, 0.05, 0.17, 0.1); // holster
-    for (const s of ['l', 'r']) add('calf_' + s, B, dk, R['calf_' + s].x, R['calf_' + s].y - 0.02, R['calf_' + s].z + 0.055, 0.105, 0.13, 0.05); // knee pads
+  dress(pal) { // helmet, plate carrier, pouches, pads: merged into one mesh per bone, shared by every soldier of that palette
+    if (!T.gear[pal]) {
+      const P = PALETTES[pal], R = T.rest, F = T.F, groups = {}, m4 = new THREE.Matrix4(), inv = new THREE.Matrix4(), e = new THREE.Euler(), q = new THREE.Quaternion();
+      const add = (bone, geo, hex, x, y, z, sx, sy, sz) => {
+        const g = geo.clone().applyMatrix4(m4.compose(new THREE.Vector3(x, y, z * F), q.setFromEuler(e.set(0, 0, 0)), new THREE.Vector3(sx, sy, sz)));
+        g.applyMatrix4(inv.copy(T.boneRest[bone]).invert());
+        const c = new THREE.Color(hex), n = g.attributes.position.count, col = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+        g.setAttribute('color', new THREE.BufferAttribute(col, 3)); (groups[bone] || (groups[bone] = [])).push(g);
+      };
+      const B = T.geo.box, G = P.gear, H = P.helmet, D = 0x0d0e0f, h = R.Head, c = R.spine_03, p = R.pelvis;
+      add('Head', T.geo.helmet, H, h.x, h.y + 0.105, h.z + 0.005, 1, 1.02, 1.12); add('Head', B, H, h.x, h.y + 0.085, h.z + 0.118, 0.2, 0.025, 0.07);
+      add('Head', B, 0x0a0d10, h.x, h.y + 0.062, h.z + 0.108, 0.17, 0.05, 0.03); add('Head', B, D, h.x, h.y + 0.165, h.z + 0.11, 0.05, 0.05, 0.05);
+      for (const s of [-1, 1]) add('Head', B, D, h.x + s * 0.118, h.y + 0.06, h.z, 0.035, 0.08, 0.07);
+      add('spine_03', B, G, c.x, c.y - 0.02, c.z + 0.085, 0.33, 0.36, 0.09); add('spine_03', B, G, c.x, c.y - 0.02, c.z - 0.105, 0.32, 0.36, 0.08);
+      for (const s of [-1, 1]) add('spine_03', B, G, c.x + s * 0.13, c.y + 0.17, c.z - 0.01, 0.06, 0.03, 0.2);
+      for (const s of [-1, 0, 1]) add('spine_03', B, D, c.x + s * 0.095, c.y - 0.11, c.z + 0.145, 0.075, 0.15, 0.05);
+      add('spine_03', B, D, c.x - 0.09, c.y + 0.05, c.z - 0.165, 0.11, 0.17, 0.06); add('spine_03', B, D, c.x - 0.09, c.y + 0.2, c.z - 0.165, 0.012, 0.16, 0.012);
+      add('pelvis', B, D, p.x, p.y + 0.06, p.z, 0.37, 0.06, 0.25);
+      add('thigh_r', B, D, R.thigh_r.x + 0.085 * Math.sign(R.thigh_r.x), R.thigh_r.y - 0.14, R.thigh_r.z, 0.05, 0.17, 0.1);
+      for (const s of ['l', 'r']) add('calf_' + s, B, D, R['calf_' + s].x, R['calf_' + s].y - 0.02, R['calf_' + s].z + 0.055, 0.105, 0.13, 0.05);
+      T.gear[pal] = Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, mergeGeometries(v)]));
+    }
+    for (const bone in T.gear[pal]) { const m = new THREE.Mesh(T.gear[pal][bone], T.mats.gear); m.frustumCulled = false; this.bones[bone].add(m); }
   }
   // one-shot helpers -------------------------------------------------------------------------
   playUpper(name, { loop = false, speed = 1, fade = 0.15 } = {}) {
