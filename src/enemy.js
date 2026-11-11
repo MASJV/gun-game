@@ -471,6 +471,7 @@ export class Enemy {
         if (this.fire(suppress)) { this.burst--; this.shotT = this.burst > 0 ? 0.115 : rr(pr.pause); } else this.shotT = 0.15;
       }
     }
+    if (this.moved > 1.2 && this.pd < 16 && (this.stepT = (this.stepT || 0) + this.moved * dt) > 1.5) { this.stepT = 0; G.enemyStep(this); } // audible footsteps near the player
     const target = face ?? (this.moved ? this.moveYaw : this.yaw), turn = (this.combat() ? 7 : 3.5) * dt, da = angd(target, this.yaw);
     this.yaw += Math.max(-turn, Math.min(turn, da));
     const pitch = this.seeing ? Math.atan2(P.pos.y + P.height * 0.6 - (this.pos.y + 1.4), Math.max(1, this.pd)) : 0;

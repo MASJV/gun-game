@@ -61,10 +61,10 @@ Everything else (world textures, audio, UI, soldier gear, optics, hands) is proc
 - Not measured on a real GPU (the test environment has software GL only).
 
 ## Verification so far
-`npm test` — 52 checks (headless Chromium, software GL): menu, movement, lean, mantle, all six guns, attachments,
+`npm test` — 52/52 checks pass (headless Chromium, software GL): menu, movement, lean, mantle, all six guns, attachments,
 hit zones, knife, frag/flash/smoke, medical, wall/LOS fairness, per-profile fight statistics, elite grenade and
 bounding rules, vault/climb traversal, body discovery -> ALERT -> alarm runner -> LOCKDOWN -> reinforcements,
-both missions, restart/pause, repeated missions.
+both missions, restart/pause, repeated missions. Some AI checks are statistical; rerun once before trusting a single failure.
 Not verified: real-GPU frame rate, audio by ear, a full hand-played mission.
 
 ## TODO (prioritised)

@@ -98,7 +98,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       P.pos.set(40, 0, 12); P.yaw = 0; P.pitch = 0; place(40, 0, 0); sim(0.5); G.inp.rmb = true; sim(0.5);
       P.pitch = -0.045; sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.2); o.body = 100 - e.hp;
       e.hp = 100; e.state = 'PATROL'; e.waitT = 1e9; e.release(); place(40, 0, 0); calm(); e.stun = 0; sim(0.6);
-      e.ch.refresh(); const h = e.ch.eye(new G.v1.constructor()); P.pitch = Math.atan2(h.y - 0.02 - G.camera.position.y, 12); sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.1); o.head = e.dead ? 'kill' : 100 - e.hp; G.inp.rmb = false;
+      e.ch.refresh(); const h = e.ch.eye(new G.v1.constructor()); P.pitch = Math.atan2(h.y + 0.03 - G.camera.position.y, 12); sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.1); o.head = e.dead ? 'kill' : 100 - e.hp; G.inp.rmb = false;
       return o;
     });
     check('combat: body hit = base damage, head hit = 2.5x', o.body === 36 && (o.head === 'kill' || o.head === 90), o);

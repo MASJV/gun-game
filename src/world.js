@@ -423,7 +423,7 @@ function tree(B, x, z, col = true) {
   const r = B.rng, h = 7 + r() * 5, tr = 0.2 + r() * 0.16;
   if (A.parts.pine_1) {
     const k = col ? TREES[Math.floor(r() * TREES.length)] : 'pine_2', s = 1.25 + r() * 0.55;
-    B.prop(k, x, -0.1, z, r() * 6.283, s, { shadow: col, tint: [0x5c6c62, 0x52625a, 0x4a5850][Math.floor(r() * 3)] });
+    B.prop(k, x, -0.1, z, r() * 6.283, s, { shadow: col, tint: [0x7c8c80, 0x6e7e74, 0x647268][Math.floor(r() * 3)] });
     if (col) B.canopy.push(M(x, 4.6 * s, z, 0, 0, 0, 2.3 * s, 5.2 * s, 2.3 * s)); // cheap shadow-only stand-in for the foliage
     if (col) B.collider(x - 0.3, 0, z - 0.3, x + 0.3, 6, z + 0.3);
     return;
@@ -572,7 +572,7 @@ function forest(B, W, scene) {
   for (const [x0, z0, x1, z1] of [[-59, -59, 59, -58], [-59, 58, 59, 59], [-59, -59, -58, 59], [58, -59, 59, 59]]) B.collider(x0, 0, z0, x1, 12, z1, { sight: false });
   return {
     name: 'FOREST OUTPOST', bounds: { x0: -60, x1: 60, z0: -60, z1: 60 }, spawn: { x: -6.6, z: 54, yaw: 0 },
-    env: { fog: [0x0a1017, 0.021], bg: 0x070b12, hemi: [0x8096c0, 0x1c2416, 1.9], moon: [0xa4b9e6, 2.6, [-35, 60, 30]], viewRange: 40, detect: 0.75, shotMul: 1, amb: 'forest' },
+    env: { fog: [0x0a1017, 0.021], bg: 0x070b12, hemi: [0x8096c0, 0x232c1c, 2.9], moon: [0xa4b9e6, 3.4, [-35, 60, 30]], viewRange: 40, detect: 0.75, shotMul: 1, amb: 'forest' },
     objective: { pos: [-7.3, 0.8, -23.3], kind: 'intel', hold: 0, prompt: 'Take intelligence package', text: 'Locate the intelligence package in the outpost command hut', done: 'INTEL SECURED' },
     extraction: { pos: [44, 0, -46], text: 'Reach the extraction flare in the north-east clearing' },
     routes: [

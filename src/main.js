@@ -69,6 +69,7 @@ G.playerBox = () => {
 };
 const panTo = (x, z) => { const P = G.player, dx = x - P.pos.x, dz = z - P.pos.z, d = Math.hypot(dx, dz) || 1; return (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / d; };
 G.enemyShotSound = (e) => G.audio.enemyShot(e.pd, panTo(e.pos.x, e.pos.z));
+G.enemyStep = (e) => G.audio.noise(0.08, { f: 420, f2: 140, vol: (e.moved > 3 ? 0.22 : 0.1) * (1 - e.pd / 16), pan: panTo(e.pos.x, e.pos.z) });
 G.nearMiss = (ox, oy, oz, dx, dy, dz) => {
   const c = G.camera.position, t = (c.x - ox) * dx + (c.y - oy) * dy + (c.z - oz) * dz;
   if (t > 0 && Math.hypot(ox + dx * t - c.x, oy + dy * t - c.y, oz + dz * t - c.z) < 1.4) G.audio.whiz(panTo(ox, oz));
@@ -448,8 +449,9 @@ function menuRefresh() { // rebuild the 3D preview for the current tab
 }
 function menuRender(dt) {
   if (!M.scene) return;
-  const vx = Math.min(innerWidth * 0.5, 830), w = innerWidth - vx;
+  const vx = $('side').offsetWidth + $('content').offsetWidth, w = innerWidth - vx;
   renderer.setViewport(0, 0, innerWidth, innerHeight); renderer.setClearColor(0x06090c); renderer.clear();
+  if (w < 260) return; // no room beside the menu on narrow windows
   renderer.setViewport(vx, 0, w, innerHeight); M.cam.aspect = w / innerHeight;
   M.spin += dt;
   if (M.obj) {
