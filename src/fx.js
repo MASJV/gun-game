@@ -22,6 +22,13 @@ export class FX {
     for (let i = 0; i < 48; i++) { const m = new THREE.Mesh(dg, dm); m.visible = false; scene.add(m); this.dec.push(m); }
     this.di = 0;
     this.flash = new THREE.PointLight(0xffc070, 0, 16, 1.5); scene.add(this.flash);
+    this.boom = new THREE.PointLight(0xffb060, 0, 40, 1.4); scene.add(this.boom);
+    // soft smoke sprites (explosions, smoke grenades)
+    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 2, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(c); this.puffs = [];
+    for (let i = 0; i < 48; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, color: 0x888888 })); s.visible = false; s.life = 0; scene.add(s); this.puffs.push(s); }
+    this.pfi = 0;
     this._v = new THREE.Vector3();
   }
   tracer(a, b, hex = 0xffe2a0) {
@@ -44,10 +51,22 @@ export class FX {
     this.spray(p, n, 7, 3.2, 0.75, 0.68, 0.55, 0.45); this.spray(p, n, 3, 6, 1, 0.8, 0.4, 0.15);
     const m = this.dec[this.di++ % this.dec.length];
     m.position.set(p.x + n.x * 0.012, p.y + n.y * 0.012, p.z + n.z * 0.012);
-    m.lookAt(this._v.set(p.x + n.x, p.y + n.y, p.z + n.z)); m.rotation.z = Math.random() * 6; m.visible = true;
+    m.lookAt(this._v.set(p.x + n.x, p.y + n.y, p.z + n.z)); m.rotation.z = Math.random() * 6; m.scale.setScalar(1); m.visible = true;
   }
   blood(p, n) { this.spray(p, n, 10, 2.6, 0.5, 0.04, 0.03, 0.5); }
   muzzle(p) { this.flash.position.copy(p); this.flash.intensity = 45; }
+  shell(p, d) { this.spray(p, d, 1, 2.6, 0.9, 0.68, 0.25, 0.7); }
+  puff(p, size, life, hex = 0x8a8a8a, rise = 0.4, op = 0.5) {
+    const s = this.puffs[this.pfi++ % this.puffs.length];
+    s.position.copy(p); s.scale.setScalar(size * 0.5); s.size = size; s.life = s.max = life; s.rise = rise; s.op = op; s.material.color.setHex(hex); s.material.rotation = Math.random() * 6; s.visible = true;
+  }
+  explosion(p) {
+    this.boom.position.set(p.x, p.y + 0.6, p.z); this.boom.intensity = 900;
+    const up = this._v.set(0, 1, 0);
+    this.spray(p, up, 40, 14, 1, 0.7, 0.25, 0.5); this.spray(p, up, 30, 9, 0.35, 0.33, 0.3, 1.1);
+    for (let i = 0; i < 6; i++) this.puff(new THREE.Vector3(p.x + (Math.random() - 0.5) * 2, p.y + 0.5 + Math.random(), p.z + (Math.random() - 0.5) * 2), 3 + Math.random() * 2, 2.2 + Math.random(), 0x55504a, 0.9, 0.55);
+    const m = this.dec[this.di++ % this.dec.length]; m.position.set(p.x, Math.max(0.02, p.y - 0.04), p.z); m.rotation.set(-Math.PI / 2, 0, Math.random() * 6); m.scale.setScalar(14); m.visible = true;
+  }
   update(dt) {
     for (const m of this.tr) if (m.visible) { m.life -= dt; m.material.opacity = Math.max(0, m.life / 0.07) * 0.55; if (m.life <= 0) m.visible = false; }
     const { pp, pv, pl } = this;
@@ -60,5 +79,11 @@ export class FX {
     }
     this.pg.attributes.position.needsUpdate = true; this.pg.attributes.color.needsUpdate = true;
     if (this.flash.intensity > 0) this.flash.intensity = Math.max(0, this.flash.intensity - dt * 700);
+    if (this.boom.intensity > 0) this.boom.intensity = Math.max(0, this.boom.intensity - dt * 4500);
+    for (const s of this.puffs) if (s.visible) {
+      s.life -= dt; const k = 1 - s.life / s.max;
+      s.scale.setScalar(s.size * (0.5 + k * 0.7)); s.position.y += s.rise * dt; s.material.opacity = s.op * Math.min(1, k * 6) * Math.min(1, (s.life / s.max) * 2.2);
+      if (s.life <= 0) s.visible = false;
+    }
   }
 }

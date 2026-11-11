@@ -31,16 +31,41 @@ export class Audio {
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(g); g.connect(this.out(pan)); o.start(t); o.stop(t + dur + 0.02);
   }
-  shot(kind) {
+  shot(kind, sup) {
+    if (sup) { this.noise(0.09, { f: 1700, f2: 500, q: 1.2, type: 'bandpass', vol: kind === 'dmr' ? 0.5 : 0.36 }); this.tone(170, 0.05, { f2: 70, vol: 0.2, type: 'triangle' }); this.click(0.22); return; }
     if (kind === 'ak') { this.noise(0.26, { f: 2600, f2: 300, vol: 1.0 }); this.tone(130, 0.2, { f2: 38, vol: 0.9, type: 'triangle' }); this.noise(0.05, { f: 5000, type: 'highpass', vol: 0.35 }); }
     else if (kind === 'm4') { this.noise(0.17, { f: 4200, f2: 600, vol: 0.8 }); this.tone(190, 0.12, { f2: 60, vol: 0.55, type: 'triangle' }); this.noise(0.04, { f: 6500, type: 'highpass', vol: 0.4 }); }
+    else if (kind === 'dmr') { this.noise(0.4, { f: 2200, f2: 180, vol: 1.1 }); this.tone(95, 0.32, { f2: 30, vol: 1, type: 'triangle' }); this.noise(0.06, { f: 4500, type: 'highpass', vol: 0.4 }); this.noise(0.7, { f: 500, f2: 120, vol: 0.2, at: 0.08 }); }
+    else if (kind === 'shotgun') { this.noise(0.36, { f: 1500, f2: 160, vol: 1.2 }); this.tone(85, 0.3, { f2: 28, vol: 1.1, type: 'triangle' }); this.click(0.5, 0.33); this.click(0.55, 0.47); }
+    else if (kind === 'smg') { this.noise(0.1, { f: 3800, f2: 900, vol: 0.6 }); this.tone(240, 0.07, { f2: 100, vol: 0.4, type: 'triangle' }); }
     else { this.noise(0.11, { f: 3400, f2: 700, vol: 0.7 }); this.tone(260, 0.09, { f2: 90, vol: 0.5, type: 'square' }); }
   }
   enemyShot(dist, pan) {
     const v = Math.max(0.05, 0.75 / (1 + dist * 0.07));
     this.noise(0.22, { f: Math.max(500, 2600 - dist * 35), f2: 250, vol: v, pan }); this.tone(120, 0.16, { f2: 45, vol: v * 0.7, pan, type: 'triangle' });
   }
-  reload(dur) { this.click(0.5); this.noise(0.05, { f: 1800, type: 'bandpass', q: 3, vol: 0.4, at: dur * 0.45 }); this.click(0.6, dur * 0.8); this.click(0.7, dur * 0.92); }
+  reload(dur, shells) {
+    if (shells) { this.click(0.5, dur * 0.7); return; } this.click(0.5); this.noise(0.05, { f: 1800, type: 'bandpass', q: 3, vol: 0.4, at: dur * 0.45 }); this.click(0.6, dur * 0.8); this.click(0.7, dur * 0.92); }
+  swish() { this.noise(0.16, { f: 900, f2: 3200, type: 'bandpass', q: 2, vol: 0.3 }); }
+  stab(kill) { this.noise(0.12, { f: 500, f2: 150, vol: 0.6 }); this.tone(kill ? 110 : 180, 0.12, { f2: 60, vol: 0.4 }); }
+  medkit() { for (let i = 0; i < 5; i++) this.noise(0.12, { f: 1200 + i * 200, type: 'bandpass', q: 2, vol: 0.14, at: i * 0.42 }); }
+  stim() { this.noise(0.25, { f: 5000, f2: 1500, type: 'highpass', vol: 0.2 }); this.tone(440, 0.3, { f2: 880, vol: 0.12, type: 'sine', at: 0.1 }); }
+  bounce(v = 0.3) { this.tone(900, 0.04, { f2: 500, vol: v, type: 'square' }); this.noise(0.03, { f: 2500, type: 'bandpass', q: 4, vol: v }); }
+  explosion(dist) {
+    const v = Math.max(0.15, 1.4 / (1 + dist * 0.05));
+    this.noise(0.9, { f: 900, f2: 60, vol: v }); this.tone(70, 0.7, { f2: 22, vol: v, type: 'triangle' }); this.noise(1.6, { f: 300, f2: 60, vol: v * 0.35, at: 0.15 });
+  }
+  flashbang(amount) { this.noise(0.25, { f: 6000, type: 'highpass', vol: 0.9 }); this.tone(140, 0.25, { f2: 50, vol: 0.7 }); if (amount > 0.3) this.tone(3400, 1.2 + amount * 1.6, { vol: 0.09 * Math.min(1.5, amount), type: 'sine', at: 0.05 }); }
+  radio() { this.noise(0.07, { f: 2400, type: 'bandpass', q: 3, vol: 0.22 }); this.tone(1250, 0.06, { vol: 0.07, type: 'square', at: 0.07 }); this.noise(0.05, { f: 2400, type: 'bandpass', q: 3, vol: 0.18, at: 0.5 }); }
+  alert(level) { const f = level >= 3 ? [660, 880, 660, 880] : level === 2 ? [440, 587] : [392]; f.forEach((x, i) => this.tone(x, 0.22, { vol: 0.16, type: 'sawtooth', at: i * 0.2 })); }
+  siren(on) {
+    const c = this.ctx; if (!c) return;
+    if (this.sir) { try { this.sir[0].stop(); this.sir[1].stop(); } catch (e) { /* stopped */ } this.sir = null; }
+    if (!on) return;
+    const o = c.createOscillator(), l = c.createOscillator(), lg = c.createGain(), g = c.createGain();
+    o.type = 'sawtooth'; o.frequency.value = 620; l.frequency.value = 0.45; lg.gain.value = 140; g.gain.value = 0.035; l.connect(lg); lg.connect(o.frequency); o.connect(g); g.connect(this.master); o.start(); l.start();
+    g.gain.setValueAtTime(0.035, c.currentTime + 14); g.gain.linearRampToValueAtTime(0.012, c.currentTime + 20); this.sir = [o, l];
+  }
   click(v = 0.5, at = 0) { this.noise(0.035, { f: 3200, type: 'bandpass', q: 5, vol: v, at }); this.tone(900, 0.02, { vol: v * 0.2, type: 'square', at }); }
   step(v = 0.2) { this.noise(0.09, { f: 500 + Math.random() * 250, f2: 150, vol: v }); }
   land() { this.noise(0.16, { f: 420, f2: 90, vol: 0.45 }); }
@@ -76,6 +101,6 @@ export class Audio {
     clearInterval(this.ambTimer);
     for (const n of this.amb || []) try { n.stop(); } catch (e) { /* already stopped */ }
     if (this.ambGain) this.ambGain.disconnect();
-    this.amb = []; this.ambGain = null;
+    this.amb = []; this.ambGain = null; this.siren(false);
   }
 }

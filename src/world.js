@@ -97,7 +97,7 @@ class Builder {
     return this;
   }
   collider(x0, y0, z0, x1, y1, z1, o = {}) {
-    this.col.push({ x0, x1, y0, y1, z0, z1, solid: o.solid !== false, sight: o.sight !== false, bullet: o.bullet !== false });
+    this.col.push({ x0, x1, y0, y1, z0, z1, solid: o.solid !== false, sight: o.sight !== false, bullet: o.bullet !== false, walk: !!o.walk, nocover: !!o.nocover });
   }
   geo(k, hex, g, m, o = {}) {
     const B = this.buf(k), col = this.color(hex, o.tint);
@@ -155,19 +155,56 @@ export function rayBoxes(cols, ox, oy, oz, dx, dy, dz, maxD, flag) {
   return { d: best, c: hit, nx: axis === 0 ? s : 0, ny: axis === 1 ? s : 0, nz: axis === 2 ? s : 0 };
 }
 
-// ---------- navigation grid (1 m cells, A*, string-pulled) ----------
+// ---------- navigation grid (1 m cells, per-cell floor height, A*, traversal links) ----------
+// Cells carry a floor height taken from "walk" colliders (platforms, stair steps). Besides the 8 grid
+// neighbours, cells can be joined by links: "vault" over low obstacles, "climb"/"drop" at platform edges.
+// Enemies therefore use the same routes the player can take by jumping or mantling.
 const DX = [1, -1, 0, 0, 1, 1, -1, -1], DZ = [0, 0, 1, -1, 1, -1, 1, -1];
 export class Nav {
   constructor(cols, b) {
     this.x0 = b.x0; this.z0 = b.z0; this.w = Math.ceil(b.x1 - b.x0); this.h = Math.ceil(b.z1 - b.z0);
-    const n = this.w * this.h, r = 0.42;
-    this.blk = new Uint8Array(n); this.gs = new Float32Array(n); this.pa = new Int32Array(n);
-    this.st = new Uint32Array(n); this.cl = new Uint32Array(n); this.stamp = 0; this.hk = []; this.hv = [];
+    const n = this.w * this.h, r = 0.42, W = this.w;
+    this.blk = new Uint8Array(n); this.ht = new Float32Array(n); this.gs = new Float32Array(n); this.pa = new Int32Array(n);
+    this.st = new Uint32Array(n); this.cl = new Uint32Array(n); this.via = new Array(n); this.stamp = 0; this.hk = []; this.hv = []; this.links = new Map();
+    const span = (lo, hi, o, max) => [Math.max(0, Math.ceil(lo - o - 0.5)), Math.min(max - 1, Math.floor(hi - o - 0.5))];
     for (const c of cols) {
-      if (!c.solid || c.y0 > 1.5 || c.y1 < 0.35) continue;
-      const i0 = Math.max(0, Math.ceil(c.x0 - r - this.x0 - 0.5)), i1 = Math.min(this.w - 1, Math.floor(c.x1 + r - this.x0 - 0.5));
-      const j0 = Math.max(0, Math.ceil(c.z0 - r - this.z0 - 0.5)), j1 = Math.min(this.h - 1, Math.floor(c.z1 + r - this.z0 - 0.5));
-      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) this.blk[j * this.w + i] = 1;
+      if (!c.walk) continue;
+      const [i0, i1] = span(c.x0 + 0.05, c.x1 - 0.05, this.x0, W), [j0, j1] = span(c.z0 + 0.05, c.z1 - 0.05, this.z0, this.h);
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (c.y1 > this.ht[j * W + i]) this.ht[j * W + i] = c.y1;
+    }
+    for (const c of cols) {
+      if (!c.solid) continue;
+      const [i0, i1] = span(c.x0 - r, c.x1 + r, this.x0, W), [j0, j1] = span(c.z0 - r, c.z1 + r, this.z0, this.h);
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const h = this.ht[j * W + i]; if (c.y1 > h + 0.55 && c.y0 < h + 1.5) this.blk[j * W + i] = 1; }
+    }
+    this.buildLinks(cols, r);
+  }
+  addLink(a, b, type, h, cost) { if (!this.links.has(a)) this.links.set(a, []); this.links.get(a).push({ to: b, type, h, cost }); }
+  buildLinks(cols, r) {
+    const W = this.w, free = (i, j) => i >= 0 && j >= 0 && i < W && j < this.h && !this.blk[j * W + i];
+    const clear = (a, b, y) => { const A = this.center(a), B = this.center(b), dx = B.x - A.x, dz = B.z - A.z, d = Math.hypot(dx, dz); return !rayBoxes(cols, A.x, y, A.z, dx / d, 0, dz / d, d, 'solid'); };
+    for (const c of cols) {
+      if (!c.solid) continue;
+      const vault = !c.walk && c.y0 < 0.3 && c.y1 >= 0.45 && c.y1 <= 1.2, plat = c.walk && c.y1 >= 0.6 && c.y1 <= 1.3 && Math.min(c.x1 - c.x0, c.z1 - c.z0) >= 2;
+      if (!vault && !plat) continue;
+      for (const ax of [0, 1]) { // 0: cross along X, 1: cross along Z
+        const lo = ax ? c.z0 : c.x0, hi = ax ? c.z1 : c.x1, o = ax ? this.z0 : this.x0, p0 = ax ? c.x0 : c.z0, p1 = ax ? c.x1 : c.z1, po = ax ? this.x0 : this.z0;
+        const a = Math.floor(lo - r - o - 0.5), b = Math.ceil(hi + r - o - 0.5);
+        const k0 = Math.ceil(p0 + 0.15 - po - 0.5), k1 = Math.floor(p1 - 0.15 - po - 0.5);
+        const id = (m, k) => (ax ? m * W + k : k * W + m), ok = (m, k) => (ax ? free(k, m) : free(m, k));
+        for (let k = k0; k <= k1; k++) {
+          if (vault && hi - lo <= 1.4 && ok(a, k) && ok(b, k)) {
+            const A = id(a, k), B = id(b, k);
+            if (Math.abs(this.ht[A] - this.ht[B]) < 0.3 && clear(A, B, c.y1 + 0.35) && clear(A, B, c.y1 + 1.3)) { const cost = b - a + 2.2; this.addLink(A, B, 'vault', c.y1, cost); this.addLink(B, A, 'vault', c.y1, cost); }
+          }
+          if (plat) for (const [g, pIn] of [[a, Math.ceil(lo + 0.05 - o - 0.5)], [b, Math.floor(hi - 0.05 - o - 0.5)]]) {
+            if (!ok(g, k) || !ok(pIn, k)) continue;
+            const Gc = id(g, k), Pc = id(pIn, k), rise = this.ht[Pc] - this.ht[Gc];
+            if (Math.abs(this.ht[Pc] - c.y1) > 0.05 || rise < 0.6 || rise > 1.3 || !clear(Gc, Pc, c.y1 + 0.4) || !clear(Gc, Pc, c.y1 + 1.4)) continue;
+            this.addLink(Gc, Pc, 'climb', c.y1, 3.6); this.addLink(Pc, Gc, 'drop', c.y1, 2.6);
+          }
+        }
+      }
     }
   }
   idx(x, z) {
@@ -175,7 +212,8 @@ export class Nav {
     return i < 0 || j < 0 || i >= this.w || j >= this.h ? -1 : j * this.w + i;
   }
   blocked(x, z) { const i = this.idx(x, z); return i < 0 || this.blk[i] === 1; }
-  center(i) { return { x: this.x0 + (i % this.w) + 0.5, z: this.z0 + ((i / this.w) | 0) + 0.5 }; }
+  height(x, z) { const i = this.idx(x, z); return i < 0 ? 0 : this.ht[i]; }
+  center(i) { return { x: this.x0 + (i % this.w) + 0.5, z: this.z0 + ((i / this.w) | 0) + 0.5, y: this.ht[i] }; }
   snap(x, z) { const i = this.idx(x, z); return i < 0 || this.blk[i] ? null : this.center(i); }
   near(x, z) {
     const i = this.idx(x, z);
@@ -194,16 +232,19 @@ export class Nav {
     const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
     if (d < 0.01) return true;
     const n = Math.ceil(d / 0.35), px = (-dz / d) * 0.3, pz = (dx / d) * 0.3;
+    let ph = this.height(a.x, a.z);
     for (let k = 0; k <= n; k++) {
       const x = a.x + (dx * k) / n, z = a.z + (dz * k) / n;
       if (this.blocked(x, z) || this.blocked(x + px, z + pz) || this.blocked(x - px, z - pz)) return false;
+      const h = this.height(x, z); if (Math.abs(h - ph) > 0.56 || Math.abs(this.height(x + px, z + pz) - h) > 0.56 || Math.abs(this.height(x - px, z - pz) - h) > 0.56) return false; ph = h;
     }
     return true;
   }
-  path(ax, az, bx, bz) {
+  // Returns [{x, z, y, link?}] (link = traversal used to reach that point) or null.
+  path(ax, az, bx, bz, maxCost = 1e9) {
     const s = this.near(ax, az), g = this.near(bx, bz);
     if (s < 0 || g < 0) return null;
-    const W = this.w, H = this.h, blk = this.blk, G = this.gs, Pa = this.pa, St = this.st, Cl = this.cl, stamp = ++this.stamp;
+    const W = this.w, H = this.h, blk = this.blk, G = this.gs, Pa = this.pa, St = this.st, Cl = this.cl, ht = this.ht, via = this.via, stamp = ++this.stamp;
     const hk = this.hk, hv = this.hv; hk.length = hv.length = 0;
     const gx = g % W, gz = (g / W) | 0;
     const hf = (i) => { const dx = Math.abs((i % W) - gx), dz = Math.abs(((i / W) | 0) - gz); return dx + dz - 0.586 * Math.min(dx, dz); };
@@ -226,40 +267,77 @@ export class Nav {
       }
       return top;
     };
-    G[s] = 0; Pa[s] = -1; St[s] = stamp; push(hf(s), s);
+    const relax = (c, ni, ng, l) => { if (St[ni] === stamp && ng >= G[ni]) return; St[ni] = stamp; G[ni] = ng; Pa[ni] = c; via[ni] = l; push(ng + hf(ni), ni); };
+    G[s] = 0; Pa[s] = -1; St[s] = stamp; via[s] = null; push(hf(s), s);
     let n = 0, found = s === g;
     while (hk.length && !found) {
       const c = pop();
       if (c === g) { found = true; break; }
       if (Cl[c] === stamp) continue;
       Cl[c] = stamp;
-      if (++n > 12000) return null;
-      const cx = c % W, cz = (c / W) | 0;
+      if (++n > 14000 || G[c] > maxCost) return null;
+      const cx = c % W, cz = (c / W) | 0, hc = ht[c];
       for (let k = 0; k < 8; k++) {
         const nx = cx + DX[k], nz = cz + DZ[k];
         if (nx < 0 || nz < 0 || nx >= W || nz >= H) continue;
         const ni = nz * W + nx;
-        if (blk[ni] || (k > 3 && (blk[cz * W + nx] || blk[nz * W + cx]))) continue;
-        const ng = G[c] + (k > 3 ? 1.414 : 1);
-        if (St[ni] === stamp && ng >= G[ni]) continue;
-        St[ni] = stamp; G[ni] = ng; Pa[ni] = c; push(ng + hf(ni), ni);
+        if (blk[ni] || Math.abs(ht[ni] - hc) > 0.56 || (k > 3 && (blk[cz * W + nx] || blk[nz * W + cx]))) continue;
+        relax(c, ni, G[c] + (k > 3 ? 1.414 : 1), null);
       }
+      const ls = this.links.get(c);
+      if (ls) for (const l of ls) relax(c, l.to, G[c] + l.cost, l);
     }
     if (!found) return null;
     const pts = [];
-    for (let i = g; i !== -1; i = Pa[i]) pts.push(this.center(i));
+    for (let i = g; i !== -1; i = Pa[i]) { const p = this.center(i); if (via[i]) p.link = via[i]; pts.push(p); }
     pts.reverse();
-    if (this.idx(bx, bz) === g) pts[pts.length - 1] = { x: bx, z: bz };
+    if (this.idx(bx, bz) === g) { pts[pts.length - 1].x = bx; pts[pts.length - 1].z = bz; }
     if (pts.length < 2) return pts;
     const out = [];
     let i = 0;
     while (i < pts.length - 1) {
+      if (pts[i + 1].link) { out.push(pts[i + 1]); i++; continue; } // traversal segments are never smoothed
       let j = Math.min(pts.length - 1, i + 40);
+      for (let k = i + 1; k <= j; k++) if (pts[k].link) { j = k - 1; break; }
       while (j > i + 1 && !this.line(pts[i], pts[j])) j--;
       out.push(pts[j]); i = j;
     }
+    out.cost = G[g];
     return out;
   }
+}
+
+// ---------- cover positions ----------
+// Generated from the collision boxes: a spot hugs one face of a box near a corner (lean around the side)
+// or sits behind low cover (rise over the top). Each spot knows which way the protected side faces.
+export function buildCover(cols, nav) {
+  const spots = [];
+  const standable = (x, z, h, rad = 0.27) => {
+    for (const c of cols) if (c.solid && c.y1 > h + 0.5 && c.y0 < h + 1.6 && x + rad > c.x0 && x - rad < c.x1 && z + rad > c.z0 && z - rad < c.z1) return false;
+    return true;
+  };
+  for (const c of cols) {
+    if (!c.solid || !c.sight || !c.bullet || c.walk || c.nocover) continue;
+    const wx = c.x1 - c.x0, wz = c.z1 - c.z0, cx = (c.x0 + c.x1) / 2, cz = (c.z0 + c.z1) / 2;
+    if (Math.max(wx, wz) < 0.8 || Math.max(wx, wz) > 70) continue;
+    for (const [nx, nz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const L = nx ? wz : wx, tx = nx ? 0 : 1, tz = nx ? 1 : 0, fx = cx + (nx * wx) / 2, fz = cz + (nz * wz) / 2;
+      const offs = L <= 0.95 ? [[0, [1, -1]]] : [[L / 2 - 0.3, [1]], [-(L / 2 - 0.3), [-1]]];
+      if (L > 3.2) for (let o = -(L / 2) + 1.6; o < L / 2 - 1.5; o += 1.7) offs.push([o, []]);
+      for (const [o, sides] of offs) {
+        const x = fx + nx * 0.48 + tx * o, z = fz + nz * 0.48 + tz * o;
+        if (nav.idx(x, z) < 0) continue;
+        const h = nav.height(x, z), rise = c.y1 - h;
+        if (rise < 0.85 || c.y0 > h + 0.45 || !standable(x, z, h)) continue;
+        const high = rise >= 1.6, cell = nav.nearest(x, z);
+        if (!cell || Math.hypot(cell.x - x, cell.z - z) > 1.5 || Math.abs(cell.y - h) > 0.3 || !standable((x + cell.x) / 2, (z + cell.z) / 2, h, 0.2)) continue;
+        const ok = sides.filter((sd) => standable(x + tx * sd * 0.62, z + tz * sd * 0.62, h, 0.18) && standable(x + tx * sd * 0.62 - nx * 0.5, z + tz * sd * 0.62 - nz * 0.5, h, 0.12));
+        if (!ok.length && high) continue; // tall cover with no usable edge gives no firing position
+        spots.push({ x, z, y: h, nx, nz, tx, tz, sides: ok, over: !high, high, cell, id: spots.length, user: null });
+      }
+    }
+  }
+  return spots;
 }
 
 // ---------- prop helpers ----------
@@ -290,8 +368,8 @@ function barrel(B, x, z, hex = 0x4a5a48) {
 }
 function sandbags(B, x, z, len, alongX) {
   const w = alongX ? len : 0.75, d = alongX ? 0.75 : len;
-  B.box('plain', 0x6a6046, x, 0, z, w, 0.7, d); B.box('plain', 0x5f573f, x, 0.7, z, w * 0.96, 0.35, d * 0.7, { col: false });
-  B.collider(x - w / 2, 0.7, z - d / 2, x + w / 2, 1.05, z + d / 2);
+  B.box('plain', 0x6a6046, x, 0, z, w, 0.7, d, { col: false }); B.box('plain', 0x5f573f, x, 0.7, z, w * 0.96, 0.35, d * 0.7, { col: false });
+  B.collider(x - w / 2, 0, z - d / 2, x + w / 2, 1.05, z + d / 2);
 }
 function container(B, x, z, alongX, hex, stack = 1) {
   const w = alongX ? 6.1 : 2.5, d = alongX ? 2.5 : 6.1;
@@ -374,7 +452,8 @@ function forest(B, W, scene) {
   // barracks
   room(B, 'wood', 0x45423a, 5.5, -24.5, 15.5, -17.5, 3, { s: [{ a: 9, b: 11 }], e: [{ a: -22, b: -20 }], w: [{ a: -22.5, b: -20.5, sill: 1, top: 2.1 }] });
   B.box('metal', 0x343a36, 10.5, 3, -21, 10.8, 0.18, 7.8);
-  B.box('plain', 0x444a38, 7, 0, -23.4, 0.95, 0.5, 2); B.box('plain', 0x444a38, 14.2, 0, -19.2, 0.95, 0.5, 2);
+  B.box('plain', 0x444a38, 7, 0, -23.4, 0.95, 0.6, 2); B.box('plain', 0x444a38, 14.2, 0, -19.2, 0.95, 0.6, 2);
+  B.box('emis', 0xc02a20, 7.5, 1.3, -17.3, 0.3, 0.4, 0.06, { col: false, tint: 0 });
   // watchtower + searchlight on the gate
   for (const [lx, lz] of [[-1.4, -1.4], [1.4, -1.4], [-1.4, 1.4], [1.4, 1.4]]) {
     B.box('wood', 0x3f3528, 14 + lx, 0, -1 + lz, 0.25, 5, 0.25); B.box('wood', 0x3f3528, 14 + lx, 5.2, -1 + lz, 0.12, 2, 0.12, { col: false });
@@ -447,7 +526,7 @@ function forest(B, W, scene) {
   for (const [x0, z0, x1, z1] of [[-59, -59, 59, -58], [-59, 58, 59, 59], [-59, -59, -58, 59], [58, -59, 59, 59]]) B.collider(x0, 0, z0, x1, 12, z1, { sight: false });
   return {
     name: 'FOREST OUTPOST', bounds: { x0: -60, x1: 60, z0: -60, z1: 60 }, spawn: { x: -6.6, z: 54, yaw: 0 },
-    env: { fog: [0x0a1017, 0.021], bg: 0x070b12, hemi: [0x8096c0, 0x1c2416, 1.9], moon: [0xa4b9e6, 2.6, [-35, 60, 30]], viewRange: 40, detect: 0.75, shot: 40, amb: 'forest' },
+    env: { fog: [0x0a1017, 0.021], bg: 0x070b12, hemi: [0x8096c0, 0x1c2416, 1.9], moon: [0xa4b9e6, 2.6, [-35, 60, 30]], viewRange: 40, detect: 0.75, shotMul: 1, amb: 'forest' },
     objective: { pos: [-7.3, 0.8, -23.3], kind: 'intel', hold: 0, prompt: 'Take intelligence package', text: 'Locate the intelligence package in the outpost command hut', done: 'INTEL SECURED' },
     extraction: { pos: [44, 0, -46], text: 'Reach the extraction flare in the north-east clearing' },
     routes: [
@@ -455,6 +534,8 @@ function forest(B, W, scene) {
       { p: [[22, -26], [22, 2], [12, 8]] }, { p: [[-8, 20], [-8, 12], [1, 10]] }, { p: [[-36, 9], [-39, 2], [-32, 2]] },
       { p: [[34, 9], [39, 11], [30, 13]] }, { p: [[10, -36], [30, -40], [36, -30], [20, -31]] }, { p: [[-9, -14], [-3, -18]], must: 1 }, { p: [[25, 35], [40, 30], [30, 23]] },
     ],
+    posts: { objective: [[-9.5, -14.5], [-16.5, -21], [-10, -20.5], [-3.5, -19]], entrance: [[-4.5, 1.5, 'south gate'], [16, -12, 'east breach'], [-12, -25.6, 'north-west gap'], [-16.5, -6.5, 'west gap'], [12, 2, 'watchtower']] },
+    panel: { x: 7.5, z: -16.4, face: [0, -1], n: 'barracks alarm' }, guards: 10,
     reinforce: [{ x: -30, z: -55, n: 'north treeline' }, { x: -54, z: -18, n: 'western treeline' }, { x: -44, z: 46, n: 'south-west treeline' }],
     pickups: [['med', 12.6, -23.6], ['med', 36.6, 16.4], ['ammo', -40, 6.5], ['ammo', -1, -19]],
   };
@@ -508,9 +589,16 @@ function warehouse(B, W, scene) {
     [30, -24, 1, 1], [36, -15, 0, 2], [31, 8, 1, 1], [40, 22, 1, 1], [26, -2, 0, 1]].forEach(([x, z, ax, st], i) => container(B, x, z, !!ax, C[i % 5], st));
   // hall clutter
   B.box('plain', 0x8a7420, -24, 0, 5, 1.3, 1.5, 2.2); B.box('plain', 0x1c1d1f, -24, 0, 3.4, 1.1, 2.3, 0.15, { col: false });
-  for (const [x, z, s] of [[-31, -8, 1.3], [-29.6, -8.2, 1], [-31, -8, 0.9], [-30, 6.5, 1.2], [-3, 22.5, 1.2], [-1.6, 22.8, 1], [-2.5, -9, 1.2], [16.5, 21.5, 1.3], [17, -3, 1.1], [9.5, 5, 1], [-18.5, -6, 1.1], [-3, 12, 1.2]])
+  for (const [x, z, s] of [[-31, -8, 1.3], [-29.6, -8.2, 1], [-31, -8, 0.9], [-30, 6.5, 1.2], [-3, 22.5, 1.2], [-1.6, 22.8, 1], [-2.5, -9, 1.2], [17, -3, 1.1], [9.5, 5, 1], [-18.5, -6, 1.1], [-3, 12, 1.2]])
     crate(B, x, z, s, s === 0.9 ? 1.3 : 0, r() < 0.5 ? 0x5d4c34 : 0x4c5440);
   barrel(B, -22, -9.5, 0x35506a); barrel(B, -22.8, -8.8, 0x6a4a34); barrel(B, 18.5, 3, 0x35506a); barrel(B, -4, -23.5, 0x6a4a34); barrel(B, 1, 14, 0x35506a);
+  // raised loading dock with stairs (walkable; enemies path onto it or climb its edge)
+  B.box('concrete', 0x606264, 13.9, 0, 22.65, 11.8, 1, 5.3, { walk: true });
+  [[7.8, 0.83], [7.4, 0.67], [7.0, 0.5], [6.6, 0.33], [6.2, 0.17]].forEach(([x, t]) => B.box('concrete', 0x585a5c, x, 0, 22.5, 0.4, t, 3, { walk: true, tint: 0 }));
+  for (let x = 8.2; x <= 19.6; x += 1.9) B.box('plain', 0x8a7420, x, 1, 20.08, 0.06, 1, 0.06, { col: false });
+  B.box('plain', 0x8a7420, 13.9, 1.95, 20.08, 11.6, 0.06, 0.06, { col: false }); B.box('plain', 0x8a7420, 13.9, 1.5, 20.08, 11.6, 0.04, 0.04, { col: false });
+  crate(B, 17.3, 24.2, 1.1, 1); crate(B, 11, 24.4, 1, 1, 0x4c5440); crate(B, 14.5, 21, 1, 1);
+  B.box('emis', 0xc02a20, -20.3, 1.3, -15, 0.06, 0.4, 0.3, { col: false, tint: 0 });
   // catwalk and pipes (visual height structure)
   B.box('metal', 0x393e44, -3, 5, -24.3, 32, 0.12, 1.7);
   for (let x = -19; x <= 13; x += 4) { B.box('plain', 0x2a2d31, x, 0, -23.55, 0.12, 5, 0.12, { col: false }); B.box('plain', 0x2a2d31, x, 5.1, -23.5, 0.06, 1, 0.06, { col: false }); }
@@ -539,15 +627,17 @@ function warehouse(B, W, scene) {
   B.box('emis', 0x163a20, -43, 0, 4, 3.4, 0.03, 3.4, { col: false, tint: 0 });
   return {
     name: 'INDUSTRIAL WAREHOUSE', bounds: { x0: -48, x1: 48, z0: -32, z1: 32 }, spawn: { x: 44.5, z: 27, yaw: Math.PI / 2 },
-    env: { fog: [0x06080b, 0.012], bg: 0x05070a, hemi: [0x5a6680, 0x16181c, 0.75], moon: [0x8fa6d6, 1.5, [30, 60, -22]], viewRange: 44, detect: 1, shot: 36, amb: 'warehouse' },
+    env: { fog: [0x06080b, 0.012], bg: 0x05070a, hemi: [0x5a6680, 0x16181c, 0.75], moon: [0x8fa6d6, 1.5, [30, 60, -22]], viewRange: 44, detect: 1, shotMul: 0.85, amb: 'warehouse' },
     objective: { pos: [-34.3, 0.8, -22], kind: 'terminal', hold: 3, prompt: 'Hold to access secured terminal', text: 'Access the secured terminal in the warehouse office', done: 'DATA EXTRACTED' },
     extraction: { pos: [-43, 0, 4], text: 'Exfiltrate through the west back lot' },
     routes: [
       { p: [[-18, 0], [-2, 0], [-2, -22], [-18, -22]] }, { p: [[-18, 2], [-18, 22], [-3, 20], [-2, 3]] }, { p: [[11, -22], [17.5, -22], [17.5, -9], [12, -6]] },
-      { p: [[9, 4], [17, 10], [17.5, 22], [9, 22.5]] }, { p: [[-28, -18], [-23.5, -15]], must: 1 }, { p: [[-28, -8], [-28, 5], [-23, -1]], must: 1 },
+      { p: [[9, 4], [17, 10], [12, 22.5], [18, 22.5]] }, { p: [[-28, -18], [-23.5, -15]], must: 1 }, { p: [[-28, -8], [-28, 5], [-23, -1]], must: 1 },
       { p: [[-28, 14], [-23, 18], [-28, 23]] }, { p: [[24, -20], [34, -20.5], [42, -9], [30, -6]] }, { p: [[-30, -28.5], [15, -28.5]] },
       { p: [[-30, 28.5], [2, 28.5]] }, { p: [[-41, -4], [-41, 13], [-38, 1]] },
     ],
+    posts: { objective: [[-28, -19], [-27.5, -11.3], [-19.2, -19], [-24, -21]], entrance: [[18, -10, 'north loading door'], [18, 10, 'south loading door'], [-33, 0, 'west door'], [5, -23.5, 'north door'], [-7, 23.5, 'south door']] },
+    panel: { x: -19.5, z: -15, face: [-1, 0], n: 'office alarm' }, guards: 10,
     reinforce: [{ x: 45, z: -1, n: 'east gate' }, { x: 45, z: -28, n: 'north-east service gate' }],
     pickups: [['med', -33.8, 12.2], ['med', -22, -24], ['ammo', -17.6, -2.6], ['ammo', 23, 16]],
   };
@@ -556,8 +646,8 @@ function warehouse(B, W, scene) {
 export function buildWorld(id, scene) {
   const B = new Builder(), W = { id, dyn: [] };
   Object.assign(W, id === 'forest' ? forest(B, W, scene) : warehouse(B, W, scene));
-  B.finish(scene);
-  W.colliders = B.col; W.nav = new Nav(B.col, W.bounds);
+  W.meshes = B.finish(scene);
+  W.colliders = B.col; W.nav = new Nav(B.col, W.bounds); W.cover = buildCover(B.col, W.nav);
   const e = W.env;
   scene.fog = new THREE.FogExp2(e.fog[0], e.fog[1]); scene.background = new THREE.Color(e.bg);
   W.hemi = new THREE.HemisphereLight(e.hemi[0], e.hemi[1], e.hemi[2]); scene.add(W.hemi);

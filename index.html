@@ -5,130 +5,198 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SHADOW PROTOCOL</title>
 <style>
-:root{--g:#9fe8b0;--a:#e8b04a;--d:#0a0e11;--p:rgba(10,14,17,.82);--l:rgba(159,232,176,.25)}
+:root{--g:#9fe8b0;--a:#e8b04a;--r:#ff5a4a;--p:rgba(9,13,16,.84);--l:rgba(159,232,176,.25)}
 *{box-sizing:border-box;margin:0;padding:0;user-select:none}
 html,body{height:100%;overflow:hidden;background:#05070a;color:#d8e0e4;font-family:Bahnschrift,"DIN Alternate","Roboto Condensed","Segoe UI",system-ui,sans-serif;letter-spacing:.04em}
 canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
-.ov{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:20;background:radial-gradient(ellipse at 30% 20%,rgba(30,48,44,.92),rgba(4,6,8,.97))}
+button{font:inherit;letter-spacing:inherit;cursor:pointer}
+.ov{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:20;background:radial-gradient(ellipse at 30% 20%,rgba(22,36,34,.9),rgba(4,6,8,.96))}
 .ov.on{display:flex}
-#menu{background:radial-gradient(ellipse at 25% 15%,#1b2b29 0,#070a0d 60%),#070a0d}
-#menu:before,.ov:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px);pointer-events:none}
-.wrap{position:relative;display:grid;grid-template-columns:minmax(340px,520px) minmax(260px,380px);gap:36px;max-width:1000px;width:92%;max-height:96vh;overflow:auto}
-h1{font-size:54px;font-weight:700;letter-spacing:.2em;color:#eef4f2;line-height:1}
+.ov:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.016) 0 1px,transparent 1px 3px);pointer-events:none}
+/* ---------- main menu ---------- */
+#menu{align-items:stretch;justify-content:flex-start;background:linear-gradient(90deg,rgba(5,8,10,.97) 0,rgba(5,8,10,.93) 38%,rgba(5,8,10,.25) 62%,rgba(5,8,10,0) 100%)}
+#side{position:relative;width:300px;padding:44px 20px 30px 40px;display:flex;flex-direction:column;flex:none}
+h1{font-size:33px;font-weight:700;letter-spacing:.2em;color:#eef4f2;line-height:1.02}
 h1 span{color:var(--g)}
-.sub{color:#7d8c90;font-size:12px;letter-spacing:.34em;margin:8px 0 22px}
-.grp{margin-bottom:16px}
-.grp label{display:block;font-size:11px;letter-spacing:.3em;color:var(--g);margin-bottom:7px}
-.opts{display:flex;gap:8px}
-.opt{flex:1;padding:11px 8px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.12);color:#b9c4c8;font:inherit;font-size:14px;cursor:pointer;text-align:center;transition:.12s}
-.opt small{display:block;font-size:10px;color:#74838a;letter-spacing:.08em;margin-top:3px}
+.sub{color:#74838a;font-size:10.5px;letter-spacing:.3em;margin:8px 0 34px}
+.nav{display:block;width:100%;text-align:left;background:none;border:0;border-left:2px solid rgba(255,255,255,.12);color:#8e9ba0;padding:12px 16px;font-size:16px;letter-spacing:.26em;margin-bottom:4px}
+.nav:hover{color:#fff;border-color:#fff}.nav.sel{color:#fff;border-color:var(--g);background:linear-gradient(90deg,rgba(159,232,176,.12),transparent)}
+#ver{margin-top:auto;font-size:10px;color:#4c585d;letter-spacing:.2em;line-height:1.7}
+#content{position:relative;width:min(560px,calc(100vw - 320px));padding:44px 26px 26px 20px;overflow-y:auto;flex:none}
+.tab{display:none}.tab.on{display:block}
+.grp{margin-bottom:18px}
+.grp>label{display:block;font-size:10.5px;letter-spacing:.3em;color:var(--g);margin-bottom:7px}
+.opts{display:flex;gap:7px;flex-wrap:wrap}
+.opt{flex:1 1 0;min-width:112px;padding:10px 9px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.12);color:#b9c4c8;font-size:13.5px;text-align:left;transition:.12s}
+.opt small{display:block;font-size:10px;color:#74838a;letter-spacing:.06em;margin-top:3px;line-height:1.35}
 .opt:hover{border-color:var(--g);color:#fff}
 .opt.sel{background:rgba(159,232,176,.13);border-color:var(--g);color:#fff;box-shadow:inset 0 -2px 0 var(--g)}
-.btn{display:block;width:100%;padding:15px;margin-top:8px;background:var(--g);color:#06110a;border:0;font:inherit;font-size:17px;font-weight:700;letter-spacing:.3em;cursor:pointer}
+.opt.off{opacity:.3;pointer-events:none}
+.opt.sm{flex:0 0 auto;min-width:0;padding:7px 12px;font-size:12px}
+.btn{display:block;width:100%;padding:15px;margin-top:8px;background:var(--g);color:#06110a;border:0;font-size:17px;font-weight:700;letter-spacing:.3em}
 .btn:hover{background:#c4f6d0}
 .btn.alt{background:transparent;color:#cfd8dc;border:1px solid rgba(255,255,255,.2);font-size:13px;padding:11px}
 .btn.alt:hover{border-color:var(--g);color:#fff}
-.panel{background:var(--p);border:1px solid rgba(255,255,255,.1);padding:18px 20px;font-size:13px;line-height:1.55;color:#aab6ba}
-.panel h3{font-size:11px;letter-spacing:.3em;color:var(--a);margin-bottom:8px}
-.panel p{margin-bottom:12px}
-.keys{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:12px}
+.panel{background:var(--p);border:1px solid rgba(255,255,255,.1);padding:14px 16px;font-size:12.5px;line-height:1.55;color:#aab6ba}
+.panel h3{font-size:10.5px;letter-spacing:.3em;color:var(--a);margin-bottom:6px}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:12.5px}
 .keys b{color:#e6ecee;font-weight:600;white-space:nowrap}
-.sens{display:flex;align-items:center;gap:10px;font-size:11px;color:#7d8c90;margin-top:10px}
-.sens input{flex:1;accent-color:var(--g)}
+.row{display:flex;align-items:center;gap:12px;font-size:12px;color:#9aa7ab;margin-bottom:12px}
+.row span:first-child{width:150px;letter-spacing:.14em;font-size:11px}
+.row input{flex:1;accent-color:var(--g)}.row output{width:44px;text-align:right;color:#fff}
+.bars{display:grid;grid-template-columns:70px 1fr;gap:4px 10px;font-size:10px;letter-spacing:.14em;color:#7d8c90;margin-top:8px}
+.bars i{display:block;height:5px;background:rgba(255,255,255,.1);align-self:center}.bars i b{display:block;height:100%;background:var(--g)}
 .box{position:relative;width:min(460px,92%);text-align:center}
 .box h2{font-size:38px;letter-spacing:.24em;margin-bottom:6px}
 .box .panel{text-align:left;margin:16px 0}
-.stats{display:grid;grid-template-columns:1fr auto;gap:5px 20px}
-.stats b{color:#fff}
+.stats{display:grid;grid-template-columns:1fr auto;gap:5px 20px}.stats b{color:#fff}
+#load{z-index:40;flex-direction:column;gap:14px;font-size:12px;letter-spacing:.3em;color:#8e9ba0}
+#loadb{width:240px;height:3px;background:rgba(255,255,255,.12)}#loadf{height:100%;width:0;background:var(--g)}
+/* ---------- HUD ---------- */
 #hud{position:fixed;inset:0;pointer-events:none;display:none;z-index:10;text-shadow:0 1px 2px #000}
 #hud.on{display:block}
 .hp{position:absolute;background:var(--p);border-left:2px solid var(--g);padding:8px 12px}
-#obj{top:18px;left:18px;max-width:330px;font-size:13px}
+#obj{top:18px;left:18px;max-width:320px;font-size:13px}
 #obj i{display:block;font-style:normal;font-size:10px;letter-spacing:.3em;color:var(--g);margin-bottom:3px}
+#sec{top:18px;left:50%;transform:translateX(-50%);border-left:0;border-top:2px solid var(--g);font-size:11px;letter-spacing:.34em;padding:6px 18px;text-align:center;color:var(--g)}
+#sec.l1{color:var(--a);border-color:var(--a)}#sec.l2{color:var(--r);border-color:var(--r)}#sec.l3{color:#fff;border-color:var(--r);background:rgba(160,20,10,.75);animation:bl 1s steps(2) infinite}
+@keyframes bl{50%{background:rgba(90,10,6,.75)}}
 #stat{top:18px;right:18px;font-size:11px;letter-spacing:.18em;text-align:right;line-height:1.7;border-left:0;border-right:2px solid var(--g)}
 #stat b{color:var(--g)}#stat b.off{color:#6d7a7f}
 #health{bottom:18px;left:18px;width:230px}
 #health i{font-style:normal;font-size:10px;letter-spacing:.3em;color:#8b989c}
 #hpn{float:right;font-size:20px;font-weight:700;color:#fff;line-height:1}
 #hpb{height:5px;background:rgba(255,255,255,.12);margin-top:8px}#hpf{height:100%;background:var(--g);width:100%}
-#weap{bottom:18px;right:18px;text-align:right;border-left:0;border-right:2px solid var(--g);min-width:200px}
+#medi{margin-top:7px;font-size:10.5px;letter-spacing:.14em;color:#8b989c}#medi b{color:#fff}
+#weap{bottom:18px;right:18px;text-align:right;border-left:0;border-right:2px solid var(--g);min-width:230px}
 #wn{font-size:12px;letter-spacing:.26em;color:#9aa7ab}
 #am{font-size:34px;font-weight:700;color:#fff;line-height:1.1}#am span{font-size:17px;color:#8b989c}
-#slots{font-size:10px;letter-spacing:.14em;color:#5f6c70;margin-top:3px}#slots b{color:var(--g)}
+#watt{font-size:9.5px;letter-spacing:.16em;color:var(--a);min-height:12px}
+#slots{font-size:10px;letter-spacing:.12em;color:#5f6c70;margin-top:3px}#slots b{color:var(--g)}
+#equip{bottom:18px;right:266px;border-left:0;border-right:2px solid rgba(255,255,255,.2);font-size:10.5px;letter-spacing:.14em;color:#6d7a7f;text-align:right;line-height:1.75}
+#equip b{color:#fff}#equip .s{color:var(--g)}
 #cross{position:absolute;left:50%;top:50%}
 #cross u{position:absolute;background:rgba(235,245,240,.9);box-shadow:0 0 2px #000}
 #cross .d{width:2px;height:2px;left:-1px;top:-1px}
+#ret{position:absolute;left:50%;top:50%;display:none}
+#ret.dot:before{content:"";position:absolute;left:-2.5px;top:-2.5px;width:5px;height:5px;border-radius:50%;background:#ff3020;box-shadow:0 0 6px 2px rgba(255,48,32,.7)}
+#ret.holo:before{content:"";position:absolute;left:-17px;top:-17px;width:34px;height:34px;border-radius:50%;border:1.5px solid rgba(255,60,40,.85);box-shadow:0 0 5px rgba(255,48,32,.5)}
+#ret.holo:after{content:"";position:absolute;left:-1.5px;top:-1.5px;width:3px;height:3px;border-radius:50%;background:#ff3020}
+#scope{position:fixed;inset:0;display:none;background:radial-gradient(circle at center,transparent 0,transparent 32vh,#000 32.6vh)}
+#scope:before,#scope:after{content:"";position:absolute;background:rgba(0,0,0,.85)}
+#scope:before{left:0;right:0;top:50%;height:1px}#scope:after{top:0;bottom:0;left:50%;width:1px}
 #hitm{position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px;opacity:0;background:linear-gradient(45deg,transparent 45%,#fff 45% 55%,transparent 55%),linear-gradient(-45deg,transparent 45%,#fff 45% 55%,transparent 55%);-webkit-mask:radial-gradient(circle,transparent 4px,#000 5px);mask:radial-gradient(circle,transparent 4px,#000 5px)}
 #hitm.k{background:linear-gradient(45deg,transparent 43%,#ff5a4a 43% 57%,transparent 57%),linear-gradient(-45deg,transparent 43%,#ff5a4a 43% 57%,transparent 57%)}
 #prompt{position:absolute;left:50%;top:60%;transform:translateX(-50%);background:var(--p);padding:8px 16px;font-size:13px;border:1px solid var(--l);display:none}
 #prompt b{color:var(--a);border:1px solid var(--a);padding:0 6px;margin-right:8px}
 #hack{position:absolute;left:50%;top:66%;width:220px;height:5px;margin-left:-110px;background:rgba(255,255,255,.15);display:none}#hackf{height:100%;background:var(--a);width:0}
-#toast{position:absolute;left:50%;top:16%;transform:translateX(-50%);font-size:17px;letter-spacing:.2em;color:#fff;background:var(--p);padding:10px 22px;border-top:2px solid var(--a);opacity:0;transition:opacity .4s;text-align:center;max-width:80%}
+#toast{position:absolute;left:50%;top:15%;transform:translateX(-50%);font-size:16px;letter-spacing:.2em;color:#fff;background:var(--p);padding:10px 22px;border-top:2px solid var(--a);opacity:0;transition:opacity .4s;text-align:center;max-width:80%}
+#subt{position:absolute;left:50%;bottom:112px;transform:translateX(-50%);font-size:13px;color:#dfe7ea;background:rgba(0,0,0,.5);padding:5px 14px;opacity:0;transition:opacity .3s;white-space:nowrap}
+#subt b{color:var(--a);letter-spacing:.2em;font-size:10px;margin-right:8px}
 #mark{position:absolute;left:0;top:0;font-size:10px;letter-spacing:.1em;color:var(--a);text-align:center;transform:translate(-50%,-50%);white-space:nowrap}
 #mark:before{content:"";display:block;width:9px;height:9px;border:2px solid var(--a);transform:rotate(45deg);margin:0 auto 5px}
+#warn{position:absolute;left:50%;top:38%;transform:translateX(-50%);color:#ffb040;font-size:14px;letter-spacing:.3em;display:none;animation:bl2 .4s steps(2) infinite}
+@keyframes bl2{50%{opacity:.35}}
 #vig{position:absolute;inset:0;box-shadow:inset 0 0 160px 40px rgba(190,20,10,.9);opacity:0}
+#stimv{position:absolute;inset:0;box-shadow:inset 0 0 140px 20px rgba(80,200,255,.5);opacity:0;transition:opacity .5s}
 .ind{position:absolute;left:50%;top:50%;width:0;height:0;opacity:0}
 .ind:before{content:"";position:absolute;left:-46px;top:-150px;width:92px;height:16px;border-top:4px solid currentColor;border-radius:50%/100% 100% 0 0}
+#flashov{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:6}
 #nv{position:fixed;inset:0;pointer-events:none;display:none;z-index:5;mix-blend-mode:multiply}
 #nv.on{display:block}
 #nv .t{position:absolute;inset:0;background:#4dff74}
 #nv .n{position:absolute;inset:-64px;opacity:.16;mix-blend-mode:multiply;animation:nz .25s steps(4) infinite}
 #nv .v{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.92) 100%),repeating-linear-gradient(0deg,rgba(0,0,0,.14) 0 1px,transparent 1px 3px)}
 @keyframes nz{0%{transform:translate(0,0)}25%{transform:translate(-31px,17px)}50%{transform:translate(23px,-41px)}75%{transform:translate(-47px,-9px)}}
-@media(max-width:820px){.wrap{grid-template-columns:1fr}h1{font-size:38px}}
+@media(max-width:900px){#side{width:190px;padding-left:20px}h1{font-size:28px}#content{width:calc(100vw - 200px)}}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="nv"><div class="t"></div><div class="n" id="nvn"></div><div class="v"></div></div>
+<div id="scope"></div>
+<div id="flashov"></div>
 
 <div id="hud">
-  <div id="vig"></div>
+  <div id="vig"></div><div id="stimv"></div>
   <div id="inds"></div>
   <div class="hp" id="obj"><i>OBJECTIVE</i><span id="objt"></span></div>
+  <div class="hp" id="sec">SECURITY · NORMAL</div>
   <div class="hp" id="stat"></div>
-  <div class="hp" id="health"><i>VITALS</i><span id="hpn">100</span><div id="hpb"><div id="hpf"></div></div></div>
-  <div class="hp" id="weap"><div id="wn"></div><div id="am"></div><div id="slots"></div></div>
+  <div class="hp" id="health"><i>VITALS</i><span id="hpn">100</span><div id="hpb"><div id="hpf"></div></div><div id="medi"></div></div>
+  <div class="hp" id="equip"></div>
+  <div class="hp" id="weap"><div id="wn"></div><div id="am"></div><div id="watt"></div><div id="slots"></div></div>
   <div id="cross"><u class="d"></u><u id="c0"></u><u id="c1"></u><u id="c2"></u><u id="c3"></u></div>
+  <div id="ret"></div>
   <div id="hitm"></div>
   <div id="mark"></div>
+  <div id="warn">GRENADE</div>
   <div id="prompt"></div>
   <div id="hack"><div id="hackf"></div></div>
   <div id="toast"></div>
+  <div id="subt"></div>
 </div>
 
-<div class="ov on" id="menu">
-  <div class="wrap">
-    <div>
-      <h1>SHADOW<br><span>PROTOCOL</span></h1>
-      <div class="sub">TACTICAL INFILTRATION // SINGLE OPERATOR</div>
+<div class="ov on" id="load"><div>LOADING ASSETS</div><div id="loadb"><div id="loadf"></div></div></div>
+
+<div class="ov" id="menu">
+  <div id="side">
+    <h1>SHADOW<br><span>PROTOCOL</span></h1>
+    <div class="sub">TACTICAL INFILTRATION</div>
+    <button class="nav sel" data-tab="play">PLAY</button>
+    <button class="nav" data-tab="loadout">LOADOUT</button>
+    <button class="nav" data-tab="settings">SETTINGS</button>
+    <button class="nav" data-tab="controls">CONTROLS</button>
+    <div id="ver">V2.0<br>SINGLE OPERATOR</div>
+  </div>
+  <div id="content">
+    <div class="tab on" id="t-play">
       <div class="grp"><label>MAP</label><div class="opts" data-k="map">
-        <button class="opt sel" data-v="forest">Forest Outpost<small>night · fog · open routes</small></button>
+        <button class="opt sel" data-v="forest">Forest Outpost<small>night · fog · open approaches</small></button>
         <button class="opt" data-v="warehouse">Industrial Warehouse<small>interior · close quarters</small></button></div></div>
       <div class="grp"><label>ENEMY INTELLIGENCE</label><div class="opts" data-k="ai">
-        <button class="opt" data-v="easy">Easy<small>slow, forgiving</small></button>
-        <button class="opt sel" data-v="smart">Smart<small>tactical · default</small></button>
-        <button class="opt" data-v="human">Human-Like<small>flanks, adapts</small></button></div></div>
-      <div class="grp"><label>STARTING WEAPON</label><div class="opts" data-k="weapon">
-        <button class="opt sel" data-v="0">AK-47<small>hard hitting · heavy recoil</small></button>
-        <button class="opt" data-v="1">M4A1<small>controllable · laser</small></button>
-        <button class="opt" data-v="2">Pistol<small>light · semi-auto</small></button></div></div>
-      <button class="btn" id="start">START MISSION</button>
-      <div class="sens">MOUSE SENSITIVITY <input type="range" id="sens" min="0.3" max="2.5" step="0.05" value="1"><span id="sensv">1.00</span></div>
+        <button class="opt" data-v="recruit">Recruit<small>slow to react, sloppy cover, poor radio discipline</small></button>
+        <button class="opt sel" data-v="tactical">Tactical<small>lean-peeks, flanks, defends the objective</small></button>
+        <button class="opt" data-v="elite">Elite Squad<small>bounding moves, suppression, grenades</small></button></div></div>
+      <div class="panel" style="margin-bottom:14px"><h3>BRIEFING</h3><p id="brief"></p></div>
+      <div class="panel" style="margin-bottom:14px"><h3>LOADOUT</h3><p id="losum"></p></div>
+      <button class="btn" id="start">DEPLOY</button>
     </div>
-    <div>
-      <div class="panel"><h3>BRIEFING</h3><p id="brief"></p>
-        <h3>CONTROLS</h3>
-        <div class="keys">
-          <b>W A S D</b><span>Move</span><b>Mouse</b><span>Look</span>
-          <b>LMB / RMB</b><span>Fire / Aim down sights</span><b>Shift</b><span>Sprint</span>
-          <b>C / Ctrl</b><span>Crouch (C toggles, Ctrl holds)</span><b>Space</b><span>Jump</span>
-          <b>R</b><span>Reload</span><b>1 2 3</b><span>AK-47 / M4A1 / Pistol</span>
-          <b>E</b><span>Interact / pick up</span><b>N</b><span>Night vision</span>
-          <b>L</b><span>Laser sight (M4A1)</span><b>Esc</b><span>Pause</span>
-        </div>
-        <p style="margin:12px 0 0;font-size:11px;color:#74838a">Enemies only react to what they can see or hear. Crouching is quiet, sprinting and gunfire are not. Bushes hide a crouched operator.</p>
+    <div class="tab" id="t-loadout">
+      <div class="grp"><label>SLOT 1 — PRIMARY</label><div class="opts" data-k="primary"></div></div>
+      <div class="grp"><label>SLOT 2 — SECONDARY</label><div class="opts" data-k="secondary"></div></div>
+      <div class="grp"><label id="attl">ATTACHMENTS</label>
+        <div class="opts" id="edit" style="margin-bottom:7px"></div>
+        <div class="opts" id="optic" style="margin-bottom:7px"></div>
+        <div class="opts" id="atts"></div>
+        <div class="bars" id="bars"></div></div>
+      <div class="grp"><label>SLOT 3 — MELEE</label><div class="opts"><button class="opt sel">Combat knife<small>silent · lethal from behind or on unaware guards</small></button></div></div>
+      <div class="grp"><label>EQUIPMENT KIT</label><div class="opts" data-k="kit"></div></div>
+    </div>
+    <div class="tab" id="t-settings">
+      <div class="grp"><label>CONTROLS</label>
+        <div class="row"><span>MOUSE SENSITIVITY</span><input type="range" id="sens" min="0.3" max="2.5" step="0.05" value="1"><output id="sensv">1.00</output></div>
+        <div class="row"><span>FIELD OF VIEW</span><input type="range" id="fov" min="60" max="95" step="1" value="75"><output id="fovv">75</output></div></div>
+      <div class="grp"><label>AUDIO</label>
+        <div class="row"><span>MASTER VOLUME</span><input type="range" id="vol" min="0" max="1" step="0.05" value="0.75"><output id="volv">75</output></div></div>
+      <div class="grp"><label>GRAPHICS QUALITY</label><div class="opts" data-k="quality">
+        <button class="opt" data-v="low">Low<small>no shadows, 1x resolution</small></button>
+        <button class="opt sel" data-v="med">Medium<small>shadows, balanced</small></button>
+        <button class="opt" data-v="high">High<small>sharp shadows, higher resolution</small></button></div></div>
+    </div>
+    <div class="tab" id="t-controls">
+      <div class="panel"><div class="keys">
+        <b>W A S D</b><span>Move</span><b>Mouse</b><span>Look</span>
+        <b>LMB / RMB</b><span>Fire / aim down sights</span><b>Shift</b><span>Sprint</span>
+        <b>C / Ctrl</b><span>Crouch (C toggles, Ctrl holds)</span><b>Space</b><span>Jump · hold against low obstacles to climb</span>
+        <b>Q / F</b><span>Lean left / right</span><b>R</b><span>Reload</span>
+        <b>1 / 2 / 3</b><span>Primary / secondary / knife</span><b>V</b><span>Quick melee</span>
+        <b>G</b><span>Throw grenade</span><b>4</b><span>Cycle frag / flash / smoke</span>
+        <b>H</b><span>Use medkit (slow, large heal)</span><b>X</b><span>Stim injection (fast, small heal)</span>
+        <b>E</b><span>Interact / pick up</span><b>N</b><span>Night vision</span>
+        <b>L</b><span>Laser sight</span><b>Esc</b><span>Pause</span>
       </div>
+      <p style="margin-top:12px;font-size:11.5px;color:#74838a">Guards only know what they see, hear or are told over the radio. Suppressed weapons, crouching and smoke keep you hidden; a radio call or the alarm panel escalates the whole site. Health does not regenerate — carry medical supplies.</p></div>
     </div>
   </div>
 </div>
@@ -140,6 +208,7 @@ h1 span{color:var(--g)}
   <div class="panel"><div class="stats" id="endstats"></div></div>
   <button class="btn" id="again">REPLAY MISSION</button><button class="btn alt" id="emenu">RETURN TO MENU</button></div></div>
 
+<script src="dist/assets.js"></script>
 <script src="dist/game.js"></script>
 </body>
 </html>

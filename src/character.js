@@ -12,10 +12,10 @@ const UPPER = { aimN: 'Pistol_Aim_Neutral', aimU: 'Pistol_Aim_Up', aimD: 'Pistol
 const UONE = ['Pistol_Reload', 'OverhandThrow', 'Interact', 'Idle_TalkingPhone_Loop', 'Hit_Chest', 'Hit_Head'];
 const FONE = ['Death01', 'Hit_Knockback', 'ClimbUp_1m', 'Roll', 'Jump_Start'];
 export const PALETTES = {
-  guard: { jacket: 0x5d6a4c, pants: 0x4d5640, gear: 0x343a2b, helmet: 0x3f4633 },
-  aggressor: { jacket: 0x75604a, pants: 0x5a4c3c, gear: 0x3a3229, helmet: 0x453c30 },
-  cautious: { jacket: 0x4c5a66, pants: 0x3f4a54, gear: 0x2a3138, helmet: 0x333c44 },
-  elite: { jacket: 0x2b2f34, pants: 0x25282c, gear: 0x17191c, helmet: 0x1c1f22 },
+  guard: { jacket: 0x3f4835, pants: 0x363d2f, gear: 0x262b20, helmet: 0x2f3527 },
+  aggressor: { jacket: 0x504537, pants: 0x41382e, gear: 0x2a251f, helmet: 0x342e26 },
+  cautious: { jacket: 0x38424a, pants: 0x2f373d, gear: 0x20262b, helmet: 0x282f35 },
+  elite: { jacket: 0x23262a, pants: 0x1e2124, gear: 0x121416, helmet: 0x17191c },
 };
 
 let T = null; // template data, built once
@@ -183,12 +183,12 @@ export class Character {
     this.kick = Math.max(0, this.kick - dt * 9);
     if (this.flashT > 0 && (this.flashT -= dt) <= 0) this.flash.visible = false;
     const B = this.bones, L = this.lean;
-    this.inner.position.x = -L * 0.2; // hips shift toward the lean side (inner is rotated to face -Z)
+    this.inner.position.x = L * 0.24; // hips shift toward the lean side (root space: +X is the character's right)
     if (Math.abs(L) > 0.01 || this.kick > 0.01) {
       this.root.getWorldQuaternion(q1); const fwd = v1.set(0, 0, -1).applyQuaternion(q1), right = v2.set(1, 0, 0).applyQuaternion(q1);
       if (Math.abs(L) > 0.01) {
-        rotWorld(B.spine_01, q1.setFromAxisAngle(fwd, L * 0.2)); rotWorld(B.spine_02, q1.setFromAxisAngle(fwd, L * 0.14)); rotWorld(B.spine_03, q1.setFromAxisAngle(fwd, L * 0.1));
-        rotWorld(B.Head, q1.setFromAxisAngle(fwd, -L * 0.22));
+        rotWorld(B.spine_01, q1.setFromAxisAngle(fwd, L * 0.27)); rotWorld(B.spine_02, q1.setFromAxisAngle(fwd, L * 0.2)); rotWorld(B.spine_03, q1.setFromAxisAngle(fwd, L * 0.15));
+        rotWorld(B.Head, q1.setFromAxisAngle(fwd, -L * 0.3));
       }
       if (this.kick > 0.01) rotWorld(B.spine_03, q1.setFromAxisAngle(right, this.kick * 0.035));
     }
@@ -212,7 +212,7 @@ export class Character {
       this.refresh(); this.zoneFrame = frame; const P = (n) => new THREE.Vector3().setFromMatrixPosition(this.bones[n].matrixWorld);
       const head = P('Head'); head.y += 0.075;
       this.zones = [
-        [head, head, 0.125, 'head', 2.5], [P('neck_01'), P('spine_02'), 0.185, 'torso', 1], [P('spine_02'), P('pelvis'), 0.175, 'torso', 1],
+        [head, head, 0.125, 'head', 2.5], [P('neck_01'), P('spine_03'), 0.075, 'torso', 1], [P('spine_03'), P('spine_02'), 0.185, 'torso', 1], [P('spine_02'), P('pelvis'), 0.175, 'torso', 1],
         [P('upperarm_l'), P('lowerarm_l'), 0.058, 'arm', 0.6], [P('lowerarm_l'), P('hand_l'), 0.05, 'arm', 0.6], [P('upperarm_r'), P('lowerarm_r'), 0.058, 'arm', 0.6], [P('lowerarm_r'), P('hand_r'), 0.05, 'arm', 0.6],
         [P('thigh_l'), P('calf_l'), 0.088, 'leg', 0.7], [P('calf_l'), P('foot_l'), 0.068, 'leg', 0.7], [P('thigh_r'), P('calf_r'), 0.088, 'leg', 0.7], [P('calf_r'), P('foot_r'), 0.068, 'leg', 0.7],
       ];
