@@ -1,12 +1,20 @@
 {
   "name": "shadow-protocol",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "SHADOW PROTOCOL - single-player tactical FPS for the browser (Three.js)",
   "scripts": {
     "build": "esbuild src/main.js --bundle --minify --format=iife --outfile=dist/game.js",
-    "dev": "esbuild src/main.js --bundle --format=iife --outfile=dist/game.js --watch --servedir=."
+    "dev": "esbuild src/main.js --bundle --format=iife --outfile=dist/game.js --watch --servedir=.",
+    "assets": "node tools/build-assets.mjs",
+    "test": "node tools/test.mjs"
   },
-  "dependencies": { "three": "^0.187.0" },
-  "devDependencies": { "esbuild": "^0.25.0" }
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "esbuild": "^0.25.0"
+  }
 }
