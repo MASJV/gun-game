@@ -10,6 +10,7 @@ import { Character } from './character.js';
 import { Security, LEVELS } from './squad.js';
 import { Grenades } from './equipment.js';
 import { FX } from './fx.js';
+import { makeBallistics } from './ballistics.js';
 import { Audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -74,20 +75,20 @@ G.nearMiss = (ox, oy, oz, dx, dy, dz) => {
   const c = G.camera.position, t = (c.x - ox) * dx + (c.y - oy) * dy + (c.z - oz) * dz;
   if (t > 0 && Math.hypot(ox + dx * t - c.x, oy + dy * t - c.y, oz + dz * t - c.z) < 1.4) G.audio.whiz(panTo(ox, oz));
 };
+const BAL = makeBallistics(G); G.trace = BAL.trace;
 G.playerShot = (o, d, w, muzzle, first) => {
-  const wh = rayBoxes(G.world.colliders, o.x, o.y, o.z, d.x, d.y, d.z, 250, 'bullet');
-  let best = wh ? wh.d : 250, hitE = null, hit = null;
-  for (const e of G.enemies) { if (e.dead) continue; const r = e.rayHit(o, d, best); if (r) { best = r.d; hitE = e; hit = r; } }
-  const end = G.v1.copy(d).multiplyScalar(best).add(o);
+  const r = BAL.playerRound(o, d, muzzle), end = G.v1.set(r.from.x + r.dir.x * r.d, r.from.y + r.dir.y * r.d, r.from.z + r.dir.z * r.d);
   if (first || Math.random() < 0.4) G.fx.tracer(muzzle, end);
-  if (hitE) {
-    let dmg = w.dmg * (hit.part === 'head' ? w.head || 2.5 : hit.mult);
-    if (w.falloff && best > w.falloff[0]) dmg *= 1 - (1 - w.falloff[1]) * Math.min(1, (best - w.falloff[0]) / (w.falloff[0] * 1.5));
-    hitE.damage(dmg, G.player.pos, hit.part); G.fx.blood(end, G.v2.copy(d).negate());
+  if (G.range) G.range.onShot(r, end, w, first);
+  if (r.kind === 'enemy') {
+    const hitE = r.e; let dmg = w.dmg * (r.part === 'head' ? w.head || 2.5 : r.mult);
+    if (w.falloff && r.d > w.falloff[0]) dmg *= 1 - (1 - w.falloff[1]) * Math.min(1, (r.d - w.falloff[0]) / (w.falloff[0] * 1.5));
+    hitE.damage(dmg, G.player.pos, r.part); G.fx.blood(end, G.v2.copy(d).negate());
     for (const e of G.enemies) if (!e.dead && e !== hitE && !e.seeing) e.supp = Math.min(1.5, e.supp + (Math.hypot(e.pos.x - end.x, e.pos.z - end.z) < 3 ? 0.35 : 0));
-    if (first) G.stats.hits++; if (hit.part === 'head') G.stats.heads++; hitMark(hitE.dead); G.audio.hit(hitE.dead);
-  } else if (wh) {
-    G.fx.impact(end, G.v2.set(wh.nx, wh.ny, wh.nz));
+    if (first) G.stats.hits++; if (r.part === 'head') G.stats.heads++; hitMark(hitE.dead, r.part === 'head'); G.audio.hit(hitE.dead);
+  } else if (r.kind === 'civ') { r.e.damage(w.dmg * r.mult); G.fx.blood(end, G.v2.copy(d).negate()); hitMark(false); }
+  else if (r.kind === 'world') {
+    G.fx.impact(end, G.v2.set(r.wh.nx, r.wh.ny, r.wh.nz)); if (first) G.audio.thud(Math.min(1, 8 / (4 + r.d)));
     for (const e of G.enemies) { // rounds cracking past or into a guard's cover suppress him and tell him he is being shot at
       if (e.dead) continue; const dd = Math.hypot(e.pos.x - end.x, e.pos.z - end.z);
       if (dd < 2.5) { e.supp = Math.min(1.5, e.supp + 0.35); if (first && !e.combat()) e.hear(G.player.pos, 'shot', Math.hypot(e.pos.x - o.x, e.pos.z - o.z)); }
@@ -254,7 +255,7 @@ const inds = [];
 for (let i = 0; i < 8; i++) { const el = document.createElement('div'); el.className = 'ind'; $('inds').appendChild(el); inds.push({ el, t: 0, x: 0, z: 0, life: 1 }); }
 function addInd(x, z, color, life) { const i = inds.find((n) => n.t <= 0) || inds[0]; i.x = x; i.z = z; i.t = i.life = life; i.src = null; i.el.style.color = color; }
 function toast(msg, t) { $('toast').textContent = msg; $('toast').style.opacity = 1; toastT = t; }
-function hitMark(kill) { hitT = kill ? 0.3 : 0.14; $('hitm').className = kill ? 'k' : ''; }
+function hitMark(kill, head) { hitT = kill ? 0.3 : head ? 0.2 : 0.14; $('hitm').className = kill ? 'k' : head ? 'h' : ''; }
 function setText(id, v) { if (hudCache[id] !== v) { hudCache[id] = v; $(id).innerHTML = v; } }
 function setStyle(id, prop, v) { const k = id + prop; if (hudCache[k] !== v) { hudCache[k] = v; $(id).style[prop] = v; } }
 function updateHUD(dt) {

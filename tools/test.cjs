@@ -112,6 +112,44 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('melee: quick knife from behind is a silent takedown', k.backstab && k.cur === 0 && k.knifeKills === 1, k);
   });
 
+  await run('ballistics', async () => {
+    await start('forest', 'tactical', { primary: 'dmr', secondary: 'shotgun' });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}; const e = solo(0); calm(); P.hp = 100;
+      const V = G.v1.constructor, put = (x, z) => { e.release(); e.pos.set(x, 0, z); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.hp = 100; e.sync(); e.ch.refresh(); };
+      const shootAt = (slot, n = 1) => { if (P.cur !== slot) { press('Digit' + (slot + 1)); sim(0.7); } const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z; P.yaw = Math.atan2(-dx, -dz); P.pitch = Math.atan2(1.1 - 1.62, Math.hypot(dx, dz)); sim(0.2);
+        for (let i = 0; i < n; i++) { P.slot.mag = Math.max(P.slot.mag, 1); P.reloading = false; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(P.slot.id === 'dmr' ? 0.4 : 1); } return 100 - e.hp; };
+      // 1. chain-link fence between shooter and target (fence line z = 3.5, x 3..18.5): visible, but bullets stop
+      put(10, 0.5); P.pos.set(10, 0, 8); o.seeThroughFence = G.los(10, 1.6, 8, 10, 1.2, 0.5); o.fenceRifle = shootAt(0, 2); o.fenceShotgun = shootAt(1, 1);
+      // 2. hut wall (command hut south wall z = -16.5)
+      put(-13, -18.5); P.pos.set(-13, 0, -13); o.wall = shootAt(0, 2); G.inp.rmb = true; sim(0.6); o.scopedWall = shootAt(0, 1); G.inp.rmb = false; sim(0.4);
+      // 3. truck and crate as cover
+      put(-11.6, -6); P.pos.set(-5, 0, -6); o.truck = shootAt(0, 2);
+      put(-2, -22.3); P.pos.set(-2, 0, -17); o.crate = shootAt(1, 1);
+      // 4. control: same weapons with a clear line do damage
+      put(0, 20); P.pos.set(0, 0, 28); o.clearRifle = shootAt(0, 1) > 0; e.hp = 100; P.pos.set(0, 0, 24); o.clearShotgun = shootAt(1, 1) > 0;
+      // 5. muzzle obstruction: the camera sees past a corner but the muzzle is behind it -> the round hits the corner
+      put(0, 20); e.hp = 100; P.pos.set(0, 0, 28); press('Digit1'); sim(0.7); P.yaw = 0; P.pitch = -0.065; sim(0.3);
+      const m = P.muzzleW, col = { x0: m.x - 0.06, x1: m.x + 0.5, y0: 0, y1: 3, z0: m.z - 0.5, z1: m.z + 0.12, solid: false, sight: false, bullet: true }; G.world.colliders.push(col);
+      const camClear = !G.trace(G.camera.position, P.fwd, 30, 'player').wh; P.slot.mag = 5; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(0.5);
+      o.muzzleBlocked = { camClear, dmg: 100 - e.hp }; G.world.colliders.splice(G.world.colliders.indexOf(col), 1);
+      // 6. enemy rounds obey the same resolver: wall, fence
+      const fireAt = () => { e.seeing = true; e.seeBody = true; e.los = true; e.pd = Math.hypot(P.pos.x - e.pos.x, P.pos.z - e.pos.z); e.yaw = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.sync(); e.ch.aimW = 1; for (let i = 0; i < 20; i++) e.ch.update(1 / 60, { speed: 0, aim: true }); let fired = 0; for (let i = 0; i < 12; i++) { e.ammo = 30; if (e.fire(false)) fired++; } return fired; };
+      P.hp = 100; put(-13, -18.5); P.pos.set(-13, 0, -13); o.enemyWall = [fireAt(), 100 - P.hp];
+      P.hp = 100; put(10, 0.5); P.pos.set(10, 0, 8); o.enemyFence = [fireAt(), 100 - P.hp];
+      P.hp = 100; put(0, 20); P.pos.set(0, 0, 28); o.enemyClear = [fireAt(), 100 - P.hp > 0];
+      // direct resolver calls straight through geometry never reach the far side
+      const d = new V(0, 0, -1); o.resolver = ['player', e].map((sh) => { const r = G.trace(new V(-13, 1.2, -13), d, 30, sh); return r.kind; });
+      return o;
+    });
+    check('ballistics: chain-link fence is see-through but stops rifle and shotgun rounds', o.seeThroughFence && o.fenceRifle === 0 && o.fenceShotgun === 0, [o.seeThroughFence, o.fenceRifle, o.fenceShotgun]);
+    check('ballistics: walls, vehicles and crates stop rounds (also when scoped)', o.wall === 0 && o.scopedWall === 0 && o.truck === 0 && o.crate === 0, [o.wall, o.scopedWall, o.truck, o.crate]);
+    check('ballistics: the same weapons hit with a clear line of fire', o.clearRifle && o.clearShotgun);
+    check('ballistics: an obstructed muzzle cannot shoot past cover the camera sees over', o.muzzleBlocked.camClear && o.muzzleBlocked.dmg === 0, o.muzzleBlocked);
+    check('ballistics: enemy fire is refused / stopped by walls and fences, lands when clear', o.enemyWall[0] === 0 && o.enemyWall[1] === 0 && o.enemyFence[0] === 0 && o.enemyFence[1] === 0 && o.enemyClear[0] > 0 && o.enemyClear[1], [o.enemyWall, o.enemyFence, o.enemyClear]);
+    check('ballistics: resolver stops at the wall for both player and enemy shooters', o.resolver.every((k) => k === 'world'), o.resolver);
+  });
+
   await run('equipment', async () => {
     await start('warehouse', 'tactical', { kit: 'recon' });
     const o = await p.evaluate(() => {

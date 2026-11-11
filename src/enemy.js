@@ -149,8 +149,8 @@ export class Enemy {
     const G = this.g, ty = T.y + 1.45;
     if (G.los(s.x, s.y + (s.high ? 1.35 : 0.7), s.z, T.x, ty, T.z)) return null;
     const m = [];
-    for (const sd of s.sides) if (G.los(s.x + s.tx * sd * 0.5, s.y + (s.high ? 1.5 : 1.0), s.z + s.tz * sd * 0.5, T.x, ty, T.z)) m.push({ type: 'side', side: sd });
-    if (s.over && G.los(s.x, s.y + 1.55, s.z, T.x, ty, T.z)) m.push({ type: 'over' });
+    for (const sd of s.sides) if (G.los(s.x + s.tx * sd * 0.5, s.y + (s.high ? 1.5 : 1.0), s.z + s.tz * sd * 0.5, T.x, ty, T.z) && G.losB(s.x + s.tx * sd * 0.5, s.y + (s.high ? 1.4 : 0.95), s.z + s.tz * sd * 0.5, T.x, ty - 0.3, T.z)) m.push({ type: 'side', side: sd });
+    if (s.over && G.los(s.x, s.y + 1.55, s.z, T.x, ty, T.z) && G.losB(s.x, s.y + 1.42, s.z, T.x, ty - 0.3, T.z)) m.push({ type: 'over' });
     return m;
   }
   pickCover(intent, T, around, radius) {
@@ -299,18 +299,17 @@ export class Enemy {
     else if (this.seeBody) { tx = P.pos.x + P.leanX * 0.5; ty = P.pos.y + P.height * 0.58; tz = P.pos.z + P.leanZ * 0.5; }
     else { tx = P.eyePos.x; ty = P.eyePos.y - 0.06; tz = P.eyePos.z; }
     let dx = tx - ox, dy = ty - oy, dz = tz - oz; const dist = Math.hypot(dx, dy, dz);
-    // the muzzle must have a real line of fire: no shooting through the cover the guard is hiding behind
-    if (rayBoxes(G.world.colliders, ox, oy, oz, dx / dist, dy / dist, dz / dist, Math.min(dist, 1.7), 'bullet')) { this.blockT += 0.3; return false; }
+    // The muzzle must have a real line of fire: not blocked by the guard's own cover, and (for aimed fire)
+    // not blocked anywhere on the way to the part of the player he can see. Seeing through a fence is not enough.
+    if (rayBoxes(G.world.colliders, ox, oy, oz, dx / dist, dy / dist, dz / dist, Math.min(dist, suppress ? 1.7 : dist - 0.35), 'bullet')) { this.blockT += 0.3; return false; }
     this.ammo--;
     const sp = (pr.spread * (1 + this.pd / 40) * (1 + (Math.min(P.speed, 7) / 7) * 0.8) * (1 + Math.max(0, 1 - (this.seenT + (this.state === 'COVER' ? pr.settle * 0.4 : 0)) / pr.settle) * 0.9) * (this.supp > 0.5 ? 1.35 : 1) * (suppress ? 1.7 : 1) * (P.crouch ? 1.15 : 1) * Math.PI) / 180;
     const yaw = Math.atan2(dx, dz) + gauss() * sp, pit = Math.atan2(dy, Math.hypot(dx, dz)) + gauss() * sp * 0.7, cp = Math.cos(pit);
-    dx = Math.sin(yaw) * cp; dy = Math.sin(pit); dz = Math.cos(yaw) * cp;
-    const wh = rayBoxes(G.world.colliders, ox, oy, oz, dx, dy, dz, 120, 'bullet'), wd = wh ? wh.d : 120;
-    const ph = rayBoxes(G.playerBox(), ox, oy, oz, dx, dy, dz, wd, 'bullet');
-    const d = ph ? ph.d : wd, a = G.v1.set(ox, oy, oz), b = G.v2.set(ox + dx * d, oy + dy * d, oz + dz * d);
+    const D = G.v3.set(Math.sin(yaw) * cp, Math.sin(pit), Math.cos(yaw) * cp), a = G.v1.set(ox, oy, oz);
+    const r = G.trace(a, D, 120, this), b = G.v2.set(ox + D.x * r.d, oy + D.y * r.d, oz + D.z * r.d); // same resolver as the player's rounds
     G.fx.tracer(a, b, 0xffb070);
-    if (ph) P.damage(DMG, this.pos, { name: this.type.name, dist: this.pd, x: this.pos.x, z: this.pos.z });
-    else { if (wh) G.fx.impact(b, G.v3.set(wh.nx, wh.ny, wh.nz)); G.nearMiss(ox, oy, oz, dx, dy, dz); }
+    if (r.kind === 'player') P.damage(DMG, this.pos, { name: this.type.name, dist: this.pd, x: this.pos.x, z: this.pos.z });
+    else { if (r.kind === 'world') G.fx.impact(b, V2.set(r.wh.nx, r.wh.ny, r.wh.nz)); else if (r.kind === 'civ') r.e.damage(DMG); G.nearMiss(ox, oy, oz, D.x, D.y, D.z); }
     ch.fire(); G.enemyShotSound(this); G.sound(this.pos, 30, 'ally', this);
     return true;
   }
@@ -416,6 +415,7 @@ export class Enemy {
         break;
       case 'COMBAT': // in the open: fight for a moment, then get to cover
         face = lookAt(this.lkp); this.crouch = !!this.wantCrouch && !this.moved;
+        if (this.blockT > 1) { this.blockT = 0; this.openT = 0; this.decT = 0; this.wantCrouch = false; if (!this.takeCover('flank') && !this.takeCover('push')) this.goInvestigate(this.lkp.x, this.lkp.z); break; } // can see but cannot shoot (fence, low wall): find a real firing position
         if (this.path && this.pi < this.path.length) this.follow(dt, 1.7);
         if ((this.openT -= dt) <= 0 && (this.decT -= dt) <= 0) {
           this.decT = rr(pr.decide);

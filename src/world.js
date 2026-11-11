@@ -440,7 +440,7 @@ function rock(B, x, z, s, col = true) {
   if (A.parts.rock_medium_1) {
     const k = 'rock_medium_' + (1 + Math.floor(r() * 3)), b = A.parts[k].box, f = 2 / (b.max.x - b.min.x), ry = Math.floor(r() * 4) * Math.PI / 2;
     B.prop(k, x, -0.12 * sy, z, ry, [sx * f, sy * 0.95 / b.max.y, sz * f], { tint: 0x7a8086 });
-    if (col) B.collider(x - sx * 0.78, 0, z - sz * 0.78, x + sx * 0.78, sy * 0.9, z + sz * 0.78);
+    if (col) B.collider(x - sx * 0.86, 0, z - sz * 0.86, x + sx * 0.86, sy * 0.9, z + sz * 0.86);
     return;
   }
   B.geo('concrete', 0x474b4c, new THREE.DodecahedronGeometry(1, 0), M(x, sy * 0.3, z, r() * 3, r() * 3, r() * 3, sx, sy, sz), { uv: 2 });
@@ -470,7 +470,8 @@ function forest(B, W, scene) {
   }
   B.box('dirt', 0x463c2f, 0, 0, -12, 37, 0.015, 31, { col: false, tint: 0 });
   // perimeter fence with three openings
-  const fo = { sight: false, bullet: false }, fence = (ax, az, bx, bz, gaps) => {
+  // chain-link: see-through, but it stops bullets
+  const fo = { sight: false }, fence = (ax, az, bx, bz, gaps) => {
     wall(B, 'fence', 0x8a9096, ax, az, bx, bz, 2.4, gaps.map((g) => ({ ...g, top: 99 })), 0.1, fo);
     const alongX = az === bz, n = Math.round((alongX ? bx - ax : bz - az) / 3.7);
     for (let i = 0; i <= n; i++) {
@@ -565,10 +566,10 @@ function forest(B, W, scene) {
   for (let i = 0; i < 520; i++) { const x = (r() - 0.5) * 112, z = (r() - 0.5) * 112; if (ok(x, z, -1.5)) B.prop('grass_common_short', x, 0, z, r() * 6.283, [0.7 + r() * 0.6, 0.35 + r() * 0.3, 0.7 + r() * 0.6], { shadow: false, tint: 0x50604a }); }
   for (let i = 0; i < 110; i++) { const x = (r() - 0.5) * 108, z = (r() - 0.5) * 108; if (ok(x, z, 0)) B.prop('fern_1', x, 0, z, r() * 6.283, 0.09 + r() * 0.05, { shadow: false, tint: 0x5a6a52 }); }
   // outpost dressing: water tower, tyre stacks, pallets and road barriers at the gate (low enough to vault)
-  if (B.prop('watertower', 15.5, 0, -13.5, 0, 0.85, { tint: 0x8a8f94 })) B.collider(14.4, 0, -14.6, 16.6, 8, -12.4);
+  if (B.prop('watertower', 15.5, 0, -13.5, 0, 0.85, { tint: 0x8a8f94 })) { B.collider(14.4, 0, -14.6, 16.6, 5.4, -12.4, { sight: false, bullet: false, nocover: true }); B.collider(14.4, 5.4, -14.6, 16.6, 8, -12.4); } // open lattice legs, solid tank
   B.prop('wheels_stack', -16.8, 0, -16, 0.4, 1.5, { col: true, shrink: 0.9 }); B.prop('wheels_stack', 12.5, 0, -15.8, 1.2, 1.5, { col: true, shrink: 0.9 });
   B.prop('pallet', -2, 0, -20.5, 0, 1.4, {}); B.prop('pallet', 10.5, 0, -12.1, 0.2, 1.7, {});
-  B.prop('trafficbarrier_1', -1.9, 0, 9.5, 0.15, 1, { col: true, shrink: 0.85, sight: false, bullet: false }); B.prop('trafficbarrier_1', 2.2, 0, 12.5, -0.1, 1, { col: true, shrink: 0.85, sight: false, bullet: false });
+  B.prop('trafficbarrier_1', -1.9, 0, 9.5, 0.15, 1, { col: true, shrink: 0.85, sight: false }); B.prop('trafficbarrier_1', 2.2, 0, 12.5, -0.1, 1, { col: true, shrink: 0.85, sight: false });
   for (const [x0, z0, x1, z1] of [[-59, -59, 59, -58], [-59, 58, 59, 59], [-59, -59, -58, 59], [58, -59, 59, 59]]) B.collider(x0, 0, z0, x1, 12, z1, { sight: false });
   return {
     name: 'FOREST OUTPOST', bounds: { x0: -60, x1: 60, z0: -60, z1: 60 }, spawn: { x: -6.6, z: 54, yaw: 0 },

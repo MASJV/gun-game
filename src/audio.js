@@ -46,6 +46,7 @@ export class Audio {
   }
   reload(dur, shells) {
     if (shells) { this.click(0.5, dur * 0.7); return; } this.click(0.5); this.noise(0.05, { f: 1800, type: 'bandpass', q: 3, vol: 0.4, at: dur * 0.45 }); this.click(0.6, dur * 0.8); this.click(0.7, dur * 0.92); }
+  thud(v = 0.5) { this.noise(0.05, { f: 900, f2: 300, type: 'bandpass', q: 1.5, vol: 0.16 * v }); }
   swish() { this.noise(0.16, { f: 900, f2: 3200, type: 'bandpass', q: 2, vol: 0.3 }); }
   stab(kill) { this.noise(0.12, { f: 500, f2: 150, vol: 0.6 }); this.tone(kill ? 110 : 180, 0.12, { f2: 60, vol: 0.4 }); }
   medkit() { for (let i = 0; i < 5; i++) this.noise(0.12, { f: 1200 + i * 200, type: 'bandpass', q: 2, vol: 0.14, at: i * 0.42 }); }
