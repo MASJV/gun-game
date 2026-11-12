@@ -67,7 +67,12 @@ export class Audio {
   }
   bolt() { this.click(0.5, 0.28); this.noise(0.08, { f: 2400, f2: 900, type: 'bandpass', q: 2, vol: 0.35, at: 0.36 }); this.noise(0.08, { f: 900, f2: 2600, type: 'bandpass', q: 2, vol: 0.35, at: 0.78 }); this.click(0.6, 0.92); }
   pump(at = 0) { this.noise(0.07, { f: 1100, f2: 500, type: 'bandpass', q: 2, vol: 0.5, at }); this.noise(0.07, { f: 600, f2: 1300, type: 'bandpass', q: 2, vol: 0.5, at: at + 0.16 }); }
-  thud(v = 0.5) { this.noise(0.05, { f: 900, f2: 300, type: 'bandpass', q: 1.5, vol: 0.16 * v }); }
+  thud(v = 0.5, mat = 'concrete') { // bullet impact, by surface
+    if (mat === 'metal') { this.tone(2400 + Math.random() * 900, 0.06, { f2: 1500, vol: 0.06 * v, type: 'triangle' }); this.noise(0.03, { f: 4200, type: 'bandpass', q: 3, vol: 0.12 * v }); }
+    else if (mat === 'wood') this.noise(0.06, { f: 700, f2: 260, type: 'bandpass', q: 2.5, vol: 0.2 * v });
+    else if (mat === 'dirt') this.noise(0.07, { f: 380, f2: 140, vol: 0.2 * v });
+    else this.noise(0.05, { f: 900, f2: 300, type: 'bandpass', q: 1.5, vol: 0.16 * v });
+  }
   swish() { this.noise(0.16, { f: 900, f2: 3200, type: 'bandpass', q: 2, vol: 0.3 }); }
   stab(kill) { this.noise(0.12, { f: 500, f2: 150, vol: 0.6 }); this.tone(kill ? 110 : 180, 0.12, { f2: 60, vol: 0.4 }); }
   medkit() { for (let i = 0; i < 5; i++) this.noise(0.12, { f: 1200 + i * 200, type: 'bandpass', q: 2, vol: 0.14, at: i * 0.42 }); }
@@ -94,7 +99,7 @@ export class Audio {
   click(v = 0.5, at = 0) { this.noise(0.035, { f: 3200, type: 'bandpass', q: 5, vol: v, at }); this.tone(900, 0.02, { vol: v * 0.2, type: 'square', at }); }
   step(v = 0.2) { const k = 0.8 + Math.random() * 0.4; this.noise(0.07 + Math.random() * 0.04, { f: (420 + Math.random() * 330) * k, f2: 120 + Math.random() * 60, vol: v * k }); if (Math.random() < 0.4) this.noise(0.03, { f: 2200, type: 'bandpass', q: 2, vol: v * 0.25, at: 0.02 }); } // never two identical steps
   land() { this.noise(0.16, { f: 420, f2: 90, vol: 0.45 }); }
-  hit(kill) { this.tone(kill ? 520 : 1500, kill ? 0.16 : 0.05, { f2: kill ? 240 : 1100, vol: 0.22, type: 'square' }); }
+  hit(kill, head) { this.tone(kill ? 520 : 1500, kill ? 0.16 : 0.05, { f2: kill ? 240 : 1100, vol: 0.22, type: 'square' }); if (head) this.tone(2600, 0.07, { f2: 2100, vol: 0.13, type: 'triangle', at: 0.02 }); }
   hurt() { this.noise(0.18, { f: 700, f2: 120, vol: 0.7 }); this.tone(90, 0.2, { f2: 50, vol: 0.5 }); }
   whiz(pan) { this.noise(0.09, { f: 2500, f2: 6000, type: 'bandpass', q: 6, vol: 0.18, pan }); }
   pickup() { this.tone(660, 0.08, { vol: 0.2, type: 'triangle' }); this.tone(990, 0.12, { vol: 0.2, type: 'triangle', at: 0.08 }); }

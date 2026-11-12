@@ -47,14 +47,19 @@ export class FX {
       this.pc[j] = r * v; this.pc[j + 1] = g * v; this.pc[j + 2] = b * v; this.pl[i] = life * (0.5 + Math.random() * 0.5);
     }
   }
-  impact(p, n) {
-    this.spray(p, n, 7, 3.2, 0.75, 0.68, 0.55, 0.45); this.spray(p, n, 3, 6, 1, 0.8, 0.4, 0.15);
+  impact(p, n, mat = 'concrete') { // surface-dependent debris
+    if (mat === 'metal') { this.spray(p, n, 6, 7, 1, 0.85, 0.45, 0.22); this.spray(p, n, 2, 2, 0.5, 0.5, 0.5, 0.3); }
+    else if (mat === 'wood') { this.spray(p, n, 7, 3, 0.55, 0.38, 0.22, 0.5); this.spray(p, n, 2, 4, 0.75, 0.6, 0.4, 0.3); }
+    else if (mat === 'dirt') { this.spray(p, n, 9, 2.6, 0.42, 0.34, 0.25, 0.55); }
+    else if (mat === 'plastic') { this.spray(p, n, 5, 3, 0.9, 0.78, 0.2, 0.35); }
+    else { this.spray(p, n, 7, 3.2, 0.75, 0.73, 0.68, 0.45); this.spray(p, n, 3, 6, 1, 0.8, 0.4, 0.15); }
+    this.lastMat = mat;
     const m = this.dec[this.di++ % this.dec.length];
     m.position.set(p.x + n.x * 0.012, p.y + n.y * 0.012, p.z + n.z * 0.012);
     m.lookAt(this._v.set(p.x + n.x, p.y + n.y, p.z + n.z)); m.rotation.z = Math.random() * 6; m.scale.setScalar(1); m.visible = true;
   }
   blood(p, n) { this.spray(p, n, 10, 2.6, 0.5, 0.04, 0.03, 0.5); }
-  muzzle(p) { this.flash.position.copy(p); this.flash.intensity = 45; }
+  muzzle(p, k = 1) { this.flash.position.copy(p); this.flash.intensity = 45 * k; }
   shell(p, d) { this.spray(p, d, 1, 2.6, 0.9, 0.68, 0.25, 0.7); }
   puff(p, size, life, hex = 0x8a8a8a, rise = 0.4, op = 0.5) {
     const s = this.puffs[this.pfi++ % this.puffs.length];

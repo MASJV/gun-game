@@ -38,7 +38,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
   await run('menu', async () => {
     const m = await p.evaluate(() => { document.querySelector('[data-tab="loadout"]').click(); document.querySelector('.opts[data-k="primary"] [data-v="ak"]').click(); document.querySelector('#optic [data-v="holo"]').click(); document.querySelector('#atts [data-v="muzzle"]').click();
       const G = window.__SP; return { tabs: document.querySelectorAll('.nav').length, ai: [...document.querySelectorAll('.opts[data-k="ai"] .opt')].map((o) => o.dataset.v), primary: G.loadout.primary, att: G.loadout.att.ak, sum: document.getElementById('losum').textContent }; });
-    check('menu: PLAY / LOADOUT / SETTINGS / CONTROLS tabs', m.tabs === 4);
+    check('menu: PLAY / LOADOUT / TRAINING / SETTINGS / CONTROLS tabs', m.tabs === 5);
     check('menu: exactly Recruit / Tactical / Elite Squad', m.ai.join() === 'recruit,tactical,elite');
     check('loadout: weapon + optic + suppressor selection is stored', m.primary === 'ak' && m.att.optic === 'holo' && m.att.muzzle === true, m.sum);
   });
@@ -133,7 +133,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       // body shot vs head shot through the animated hit zones
       P.pos.set(40, 0, 12); P.yaw = 0; P.pitch = 0; place(40, 0, 0); sim(0.5); G.inp.rmb = true; sim(0.5);
       P.pitch = -0.045; sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.2); o.body = 100 - e.hp;
-      e.hp = 100; e.state = 'PATROL'; e.waitT = 1e9; e.release(); place(40, 0, 0); calm(); e.stun = 0; sim(0.6);
+      e.hp = 100; e.set('PATROL'); e.wantCrouch = false; e.waitT = 1e9; e.release(); place(40, 0, 0); calm(); e.stun = 0; sim(0.6);
       e.ch.refresh(); const h = e.ch.eye(new G.v1.constructor()); P.pitch = Math.atan2(h.y + 0.03 - G.camera.position.y, 12); sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.1); o.head = e.dead ? 'kill' : 100 - e.hp; G.inp.rmb = false;
       return o;
     });
@@ -163,11 +163,11 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       put(-11.6, -6); P.pos.set(-5, 0, -6); o.truck = shootAt(0, 2);
       put(-2, -22.3); P.pos.set(-2, 0, -17); o.crate = shootAt(1, 1);
       // 4. control: same weapons with a clear line do damage
-      put(0, 20); e.hp = 5000; P.pos.set(0, 0, 25); o.clearRifle = 5000 - e.hp > 0; shootAt(0, 3); o.clearRifle = e.hp < 5000; { const r = G.trace(G.camera.position, P.fwd, 60, 'player'); o.dbg = [r.kind, +r.d.toFixed(2), r.wh ? [r.wh.x0, r.wh.x1, r.wh.y0, r.wh.y1, r.wh.z0, r.wh.z1].map((v) => +v.toFixed(1)) : null, P.cur, P.slot.mag, +P.boltT.toFixed(2), P.reloading, e.hp, e.dead]; } put(0, 20); e.stun = 9; e.hp = 5000; P.pos.set(0, 0, 23.5); const sm0 = P.slots[1].mag, sh0 = G.stats.shots; shootAt(1, 2); o.clearShotgun = e.hp < 5000; { const r0 = G.trace(G.camera.position, P.fwd, 60, 'player'), m = P.muzzleW, c = G.camera.position; o.dbg2 = [r0.kind, +r0.d.toFixed(2), r0.part, [m.x - c.x, m.y - c.y, m.z - c.z].map((v) => +v.toFixed(2)), [P.pos.x, P.pos.z, P.yaw, P.pitch].map((v) => +v.toFixed(2)), [e.pos.x, e.pos.z], e.ch.root.position.z]; } o.dbg = [P.cur, sm0, P.slots[1].mag, G.stats.shots - sh0, +P.pumpT.toFixed(2), +P.fireT.toFixed(2), P.reloading, !!P.use, P.swT, e.hp]; e.stun = 0; e.hp = 100;
+      put(0, 20); e.hp = 5000; P.pos.set(0, 0, 25); o.clearRifle = 5000 - e.hp > 0; shootAt(0, 3); o.clearRifle = e.hp < 5000; put(0, 20); e.stun = 9; e.hp = 5000; P.pos.set(0, 0, 23.5); const sm0 = P.slots[1].mag, sh0 = G.stats.shots; shootAt(1, 2); o.clearShotgun = e.hp < 5000; { const r0 = G.trace(G.camera.position, P.fwd, 60, 'player'), m = P.muzzleW, c = G.camera.position; o.dbg2 = [r0.kind, +r0.d.toFixed(2), r0.part, [m.x - c.x, m.y - c.y, m.z - c.z].map((v) => +v.toFixed(2)), [P.pos.x, P.pos.z, P.yaw, P.pitch].map((v) => +v.toFixed(2)), [e.pos.x, e.pos.z], e.ch.root.position.z]; } o.dbg = [P.cur, sm0, P.slots[1].mag, G.stats.shots - sh0, +P.pumpT.toFixed(2), +P.fireT.toFixed(2), P.reloading, !!P.use, P.swT, e.hp]; e.stun = 0; e.hp = 100;
       // 5. muzzle obstruction: the camera sees past a corner but the muzzle is behind it -> the round hits the corner
       put(0, 20); e.hp = 100; P.pos.set(0, 0, 28); press('Digit1'); sim(0.7); P.yaw = 0; P.pitch = -0.065; sim(0.3);
       const m = P.muzzleW, col = { x0: m.x - 0.06, x1: m.x + 0.5, y0: 0, y1: 3, z0: m.z - 0.5, z1: m.z + 0.12, solid: false, sight: false, bullet: true }; G.world.colliders.push(col);
-      const camClear = !G.trace(G.camera.position, P.fwd, 30, 'player').wh; P.slot.mag = 5; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(0.5);
+      const ct = G.trace(G.camera.position, P.fwd, 30, 'player'), camClear = ct.kind === 'enemy' || !ct.wh || !!ct.wh.c.ground; P.slot.mag = 5; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(0.5);
       o.muzzleBlocked = { camClear, dmg: 100 - e.hp }; G.world.colliders.splice(G.world.colliders.indexOf(col), 1);
       // 6. enemy rounds obey the same resolver: wall, fence
       const fireAt = () => { e.seeing = true; e.seeBody = true; e.los = true; e.pd = Math.hypot(P.pos.x - e.pos.x, P.pos.z - e.pos.z); e.yaw = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.sync(); e.ch.aimW = 1; for (let i = 0; i < 20; i++) e.ch.update(1 / 60, { speed: 0, aim: true }); let fired = 0; for (let i = 0; i < 40; i++) { e.ammo = 30; e.seenT = 5; if (e.fire(false)) fired++; } return fired; };
@@ -492,6 +492,48 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('range: unlimited supplies, no failure state, dummies respawn, returns to the menu', o.supply[0] && o.supply[1] === 3 && o.alive[0] === 'playing' && o.alive[1] === 100 && o.respawn && o.menu === 'menu', [o.supply, o.alive, o.respawn, o.menu]);
     await start('warehouse', 'tactical');
     check('range: a normal mission starts afterwards', await p.evaluate(() => { const G = window.__SP; return G.state === 'playing' && !G.range && G.enemies.length === 10; }));
+  });
+
+  await run('pacing', async () => {
+    await start('forest', 'tactical');
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, pc = G.pacing, o = {}; calm();
+      o.inactiveInTests = !pc.active; pc.active = true; G.adaptive = true; const s0 = pc.scale;
+      for (let i = 0; i < 120; i++) pc.feed(33); o.down = pc.scale; o.ema = +pc.ema.toFixed(1); o.worst = pc.worst;
+      for (let i = 0; i < 1200; i++) pc.feed(8); o.up = pc.scale;
+      for (let i = 0; i < 300; i++) pc.feed(80); o.floor = pc.scale; for (let i = 0; i < 60; i++) pc.feed(900); o.ignoresHitches = pc.ema < 100;
+      for (let i = 0; i < 1200; i++) pc.feed(8); o.restored = pc.scale; for (let i = 0; i < 120; i++) pc.feed(33); G.adaptive = false; pc.feed(40); o.offRespected = pc.scale === 1; G.adaptive = true; pc.active = false; o.s0 = s0;
+      // mouse look does not depend on the frame time
+      const look = (dt) => { P.yaw = 0; G.inp.mx = 200; G.step(dt); return P.yaw; }; o.look = [look(0.05), look(0.005)].map((v) => +v.toFixed(5));
+      // overlay toggle with F3
+      press('F3'); o.overlay = getComputedStyle(document.getElementById('perfov')).display; press('F3'); o.overlayOff = getComputedStyle(document.getElementById('perfov')).display;
+      // raw-input pointer lock falls back when the browser rejects the option
+      const c = document.getElementById('c'), orig = c.requestPointerLock, calls = []; G.rawInput = true;
+      c.requestPointerLock = (opt) => { calls.push(opt ? 'raw' : 'plain'); return opt ? Promise.reject(new DOMException('no', 'NotSupportedError')) : Promise.resolve(); };
+      G.lock(); return new Promise((res) => setTimeout(() => { c.requestPointerLock = orig; o.lockCalls = calls; res(o); }, 50));
+    });
+    const src = require('fs').readFileSync(require('path').resolve(__dirname, '..', 'src', 'character.js'), 'utf8'), body = src.slice(src.indexOf('  update(dt, s) {'), src.indexOf('  // world-space queries'));
+    check('pacing: adaptive render scale drops under slow frames, never below 60 %, recovers, ignores hitches', o.inactiveInTests && o.s0 === 1 && o.down < 1 && o.floor === 0.6 && o.restored === 1 && o.up === 1 && o.ignoresHitches && o.offRespected, o);
+    check('pacing: frame-time stats (EMA / worst) are tracked; overlay toggles with F3', o.ema > 25 && o.worst >= 33 && o.overlay === 'block' && o.overlayOff === 'none', [o.ema, o.worst, o.overlay, o.overlayOff]);
+    check('input: mouse look is independent of frame time; raw input falls back to plain pointer lock', o.look[0] === o.look[1] && o.look[0] !== 0 && o.lockCalls.join() === 'raw,plain', [o.look, o.lockCalls]);
+    check('pacing: no per-frame allocations in Character.update()', !/new THREE\./.test(body), body.match(/new THREE\.\w+/g));
+  });
+
+  await run('feedback', async () => {
+    await start('warehouse', 'tactical', { primary: 'ak' });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}, V = G.v1.constructor; calm(); G.enemies.forEach((e) => { e.dead = true; e.ch.root.visible = false; });
+      const hitMat = (from, to) => { const d = new V().subVectors(to, from).normalize(); const r = G.trace(from, d, 80, 'player'); return r.wh && r.wh.c.mat; };
+      o.container = hitMat(new V(10, 1.2, -6), new V(11, 1.2, 0)); o.crate = hitMat(new V(-3, 0.5, 18), new V(-3, 0.5, 22.5)); o.ground = hitMat(new V(30, 1.6, 0), new V(30, 0, -5)); o.wall = hitMat(new V(23, 1.5, 0), new V(20, 1.5, 0));
+      // firing at the ground produces an impact on the ground plane (not a tracer into infinity)
+      P.pos.set(30, 0, 0); P.yaw = 0; P.pitch = -0.5; sim(0.3); G.fx.lastMat = null; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.04); G.inp.lmb = false; o.groundImpact = G.fx.lastMat;
+      // low-ammo HUD
+      const s = P.slots[0]; s.mag = 30; sim(0.1); const c0 = document.getElementById('am').style.color; s.mag = 7; sim(0.1); const c1 = document.getElementById('am').style.color; o.hint1 = document.getElementById('ammohint').textContent; s.mag = 0; sim(0.1); o.hint0 = document.getElementById('ammohint').textContent; o.colors = [c0, c1];
+      o.flash = P.slots.map((x) => x.st.flash);
+      return o;
+    });
+    check('feedback: surface tags on metal containers and wall cladding, wooden crates and the concrete floor', o.container === 'metal' && o.crate === 'wood' && o.ground === 'concrete' && o.wall === 'metal' && o.groundImpact === 'concrete', o);
+    check('feedback: low-ammo colour and RELOAD prompt; per-weapon muzzle flash', o.colors[0] === '' && o.colors[1] !== '' && o.hint1 === 'LOW AMMO' && o.hint0 === 'RELOAD [R]' && o.flash[0] === 0.9 && o.flash[1] === 0.55, [o.colors, o.hint1, o.hint0, o.flash]);
   });
 
   await run('stability', async () => {

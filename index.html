@@ -74,6 +74,7 @@ h1 span{color:var(--g)}
 #wn{font-size:12px;letter-spacing:.26em;color:#9aa7ab}
 #am{font-size:34px;font-weight:700;color:#fff;line-height:1.1}#am span{font-size:17px;color:#8b989c}
 #watt{font-size:9.5px;letter-spacing:.16em;color:var(--a);min-height:12px}
+#ammohint{font-size:10px;letter-spacing:.3em;color:#e8b04a;min-height:0}
 #slots{font-size:10px;letter-spacing:.12em;color:#5f6c70;margin-top:3px}#slots b{color:var(--g)}
 #equip{bottom:18px;right:266px;border-left:0;border-right:2px solid rgba(255,255,255,.2);font-size:10.5px;letter-spacing:.14em;color:#6d7a7f;text-align:right;line-height:1.75}
 #equip b{color:#fff}#equip .s{color:var(--g)}
@@ -108,6 +109,8 @@ h1 span{color:var(--g)}
 .ind{position:absolute;left:50%;top:50%;width:0;height:0;opacity:0}
 .ind:before{content:"";position:absolute;left:-46px;top:-150px;width:92px;height:16px;border-top:4px solid currentColor;border-radius:50%/100% 100% 0 0}
 #flashov{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:6}
+#perfov{position:fixed;right:18px;top:130px;z-index:30;display:none;pointer-events:none;background:rgba(0,0,0,.6);color:#9fe8b0;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;padding:6px 9px;letter-spacing:.05em}
+.row.chk{cursor:pointer;margin-top:8px}.row.chk input{flex:none;width:15px;height:15px}.row.chk span{width:auto;letter-spacing:.08em}
 #nv{position:fixed;inset:0;pointer-events:none;display:none;z-index:5;mix-blend-mode:multiply}
 #nv.on{display:block}
 #nv .t{position:absolute;inset:0;background:#4dff74}
@@ -122,6 +125,7 @@ h1 span{color:var(--g)}
 <div id="nv"><div class="t"></div><div class="n" id="nvn"></div><div class="v"></div></div>
 <div id="scope"><u class="l"></u><u class="r"></u><u class="b"></u><u class="m"></u><div id="zoomv"></div></div>
 <div id="flashov"></div>
+<div id="perfov"></div>
 
 <div id="hud">
   <div id="vig"></div><div id="stimv"></div>
@@ -131,7 +135,7 @@ h1 span{color:var(--g)}
   <div class="hp" id="stat"></div>
   <div class="hp" id="health"><i>VITALS</i><span id="hpn">100</span><div id="hpb"><div id="hpf"></div></div><div id="medi"></div></div>
   <div class="hp" id="equip"></div>
-  <div class="hp" id="weap"><div id="wn"></div><div id="am"></div><div id="watt"></div><div id="slots"></div></div>
+  <div class="hp" id="weap"><div id="wn"></div><div id="am"></div><div id="watt"></div><div id="ammohint"></div><div id="slots"></div></div>
   <div id="cross"><u class="d"></u><u id="c0"></u><u id="c1"></u><u id="c2"></u><u id="c3"></u></div>
   <div id="ret"></div>
   <div id="hitm"></div>
@@ -204,7 +208,10 @@ h1 span{color:var(--g)}
       <div class="grp"><label>GRAPHICS QUALITY</label><div class="opts" data-k="quality">
         <button class="opt" data-v="low">Low<small>no shadows, 1x resolution</small></button>
         <button class="opt sel" data-v="med">Medium<small>shadows, balanced</small></button>
-        <button class="opt" data-v="high">High<small>sharp shadows, higher resolution</small></button></div></div>
+        <button class="opt" data-v="high">High<small>sharp shadows, higher resolution</small></button></div>
+        <label class="row chk"><input type="checkbox" id="adchk"><span>ADAPTIVE RESOLUTION — lower render scale briefly when frames run slow</span></label>
+        <label class="row chk"><input type="checkbox" id="ovchk"><span>PERFORMANCE OVERLAY (F3)</span></label>
+        <label class="row chk"><input type="checkbox" id="rawchk"><span>RAW MOUSE INPUT (no OS acceleration, where supported)</span></label></div>
     </div>
     <div class="tab" id="t-controls">
       <div class="panel"><div class="keys">

@@ -238,7 +238,7 @@ export class Player {
     const hz = w.id === 'ak' && n > 4 ? Math.sin(n * 0.8) * 1.5 + (Math.random() - 0.5) : (Math.random() - 0.5) * 2;
     this.ry += ((hz * w.recoilH) * Math.PI) / 180 * ar;
     this.kick = Math.min(0.13, this.kick + w.kick);
-    if (!w.sup) { this.flashT = 0.045; this.flash.rotation.z = Math.random() * 6; this.flash.scale.setScalar((w.pellets ? 1.3 : 0.7) + Math.random() * 0.6); G.fx.muzzle(cam.position); }
+    if (!w.sup) { this.flashT = 0.045; this.flash.rotation.z = Math.random() * 6; this.flash.scale.setScalar(w.flash * (0.8 + Math.random() * 0.45)); G.fx.muzzle(cam.position, w.flash); }
     G.audio.shot(w.id, w.sup); G.sound(this.pos, w.noise * G.world.env.shotMul, 'shot'); G.stats.shots++;
     const v = s.view; G.fx.shell(this._v.copy(v.eject).applyMatrix4(v.matrixWorld).applyQuaternion(cam.quaternion).add(cam.position), this._v2.set(1, 0.6, 0).applyQuaternion(cam.quaternion));
   }

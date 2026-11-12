@@ -29,7 +29,7 @@ registerMap('range', (B, W, scene) => {
   for (const z of [-8, -30, -55, -80, -104]) light(W, scene, 0xfff0d8, z > -20 ? 55 : 85, 44, 0, 7, z);
   return {
     name: 'TRAINING RANGE', range: true, bounds: { x0: -16, x1: 16, z0: -112, z1: 13 }, spawn: { x: 0, z: 7, yaw: 0 },
-    env: { fog: [0x0b1017, 0.005], bg: 0x080c12, hemi: [0x93a6c8, 0x2a3024, 3.2], moon: [0xb4c6ea, 3.4, [-30, 60, 25]], viewRange: 40, detect: 1, shotMul: 1, amb: 'forest' },
+    env: { fog: [0x0b1017, 0.005], bg: 0x080c12, hemi: [0x93a6c8, 0x2a3024, 3.2], moon: [0xb4c6ea, 3.4, [-30, 60, 25]], viewRange: 40, detect: 1, shotMul: 1, amb: 'forest', ground: 'dirt' },
     objective: { pos: [0, 0, -50] }, extraction: { pos: [0, 0, 9999] }, anchors: [], entries: [{ id: 'line', name: 'firing line', x: 0, z: 7, yaw: 0 }], exits: [], routes: [],
     posts: { objective: [], entrance: [] }, panel: null, guards: 0, reinforce: [], pickups: [['ammo', -12.5, 8.5], ['med', 12.5, 8.5]],
   };

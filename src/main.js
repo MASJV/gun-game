@@ -35,11 +35,12 @@ window.__SP = G;
 G.debugRender = () => { // used by the perf probe in tools/: one synchronous frame, GPU flushed
   const t0 = performance.now(), gl = renderer.getContext(); renderer.info.autoReset = false; renderer.info.reset();
   renderer.setViewport(0, 0, innerWidth, innerHeight); renderer.clear(); renderer.render(G.scene, G.camera); renderer.clearDepth(); renderer.render(G.wscene, G.wcam);
-  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); renderer.info.autoReset = true;
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); 
   return { ms: Math.round(performance.now() - t0), calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
 };
-try { const s = JSON.parse(localStorage.getItem('sp2_settings') || '{}'); if (s.sens) G.sens = s.sens; if (s.fov) G.fov = s.fov; if (s.quality) G.sel.quality = s.quality; if (s.vol != null) G.vol = s.vol; } catch (e) { /* defaults */ }
-const saveSettings = () => { try { localStorage.setItem('sp2_settings', JSON.stringify({ sens: G.sens, fov: G.fov, quality: G.sel.quality, vol: G.vol })); } catch (e) { /* ignore */ } };
+try { const s = JSON.parse(localStorage.getItem('sp2_settings') || '{}'); if (s.sens) G.sens = s.sens; if (s.fov) G.fov = s.fov; if (s.quality) G.sel.quality = s.quality; if (s.vol != null) G.vol = s.vol; if (s.adaptive != null) G.adaptive = s.adaptive; if (s.overlay != null) G.overlay = s.overlay; if (s.raw != null) G.rawInput = s.raw; } catch (e) { /* defaults */ }
+if (G.adaptive == null) G.adaptive = true; if (G.rawInput == null) G.rawInput = true; G.overlay = !!G.overlay;
+const saveSettings = () => { try { localStorage.setItem('sp2_settings', JSON.stringify({ sens: G.sens, fov: G.fov, quality: G.sel.quality, vol: G.vol, adaptive: G.adaptive, overlay: G.overlay, raw: G.rawInput })); } catch (e) { /* ignore */ } };
 
 // ---------- services used by player / enemies / equipment ----------
 const ray = (flag) => (ax, ay, az, bx, by, bz) => {
@@ -88,10 +89,10 @@ G.playerShot = (o, d, w, muzzle, first) => {
     if (w.falloff && r.d > w.falloff[0]) dmg *= 1 - (1 - w.falloff[1]) * Math.min(1, (r.d - w.falloff[0]) / (w.falloff[0] * 1.5));
     hitE.damage(dmg, G.player.pos, r.part); G.fx.blood(end, G.v2.copy(d).negate());
     for (const e of G.enemies) if (!e.dead && e !== hitE && !e.seeing) e.supp = Math.min(1.5, e.supp + (Math.hypot(e.pos.x - end.x, e.pos.z - end.z) < 3 ? 0.35 : 0));
-    if (first) G.stats.hits++; if (r.part === 'head') G.stats.heads++; hitMark(hitE.dead, r.part === 'head'); G.audio.hit(hitE.dead);
+    if (first) G.stats.hits++; if (r.part === 'head') G.stats.heads++; hitMark(hitE.dead, r.part === 'head'); G.audio.hit(hitE.dead, r.part === 'head');
   } else if (r.kind === 'civ') { r.e.damage(w.dmg * r.mult); G.fx.blood(end, G.v2.copy(d).negate()); hitMark(false); }
   else if (r.kind === 'world') {
-    G.fx.impact(end, G.v2.set(r.wh.nx, r.wh.ny, r.wh.nz)); if (first) G.audio.thud(Math.min(1, 8 / (4 + r.d)));
+    G.fx.impact(end, G.v2.set(r.wh.nx, r.wh.ny, r.wh.nz), r.wh.c.mat); if (first) G.audio.thud(Math.min(1, 8 / (4 + r.d)), r.wh.c.mat);
     for (const e of G.enemies) { // rounds cracking past or into a guard's cover suppress him and tell him he is being shot at
       if (e.dead) continue; const dd = Math.hypot(e.pos.x - end.x, e.pos.z - end.z);
       if (dd < 2.5) { e.supp = Math.min(1.5, e.supp + 0.35); if (first && !e.combat()) e.hear(G.player.pos, 'shot', Math.hypot(e.pos.x - o.x, e.pos.z - o.z)); }
@@ -175,11 +176,29 @@ function spawnEnemy(x, z, route, o) {
   const e = new Enemy(G, c.x, c.z, route, typeBag.pop(), PROFILES[G.sel.ai], o);
   G.enemies.push(e); return e;
 }
+function basePixelRatio() { const q = G.sel.quality; return q === 'low' ? 1 : Math.min(window.devicePixelRatio || 1, q === 'high' ? 2 : 1.25); }
 function applyQuality() {
-  const q = G.sel.quality;
-  renderer.setPixelRatio(q === 'low' ? 1 : Math.min(window.devicePixelRatio || 1, q === 'high' ? 2 : 1.25));
-  renderer.shadowMap.enabled = q !== 'low'; resize();
+  G.pacing.scale = 1; renderer.setPixelRatio(basePixelRatio());
+  renderer.shadowMap.enabled = G.sel.quality !== 'low'; resize();
 }
+// ---------- frame pacing: frame-time statistics + adaptive render scale (resolution only, never simulation) ----------
+G.pacing = {
+  ema: 16.7, worst: 0, scale: 1, min: 0.6, hi: 0, lo: 0, ring: new Float32Array(90), ri: 0, active: !TEST, changes: 0,
+  feed(ms) { // one frame time sample; returns true when the render scale changed
+    if (ms > 250) return false; // tab switch / breakpoint: not a real frame
+    this.ema += (ms - this.ema) * 0.08; this.ring[this.ri++ % this.ring.length] = ms;
+    let w = 0; for (const v of this.ring) if (v > w) w = v; this.worst = w;
+    if (!G.adaptive && this.scale !== 1) { this.scale = 1; renderer.setPixelRatio(basePixelRatio()); resize(); return true; }
+    if (!this.active || !G.adaptive || G.state !== 'playing') { this.hi = this.lo = 0; return false; }
+    const s = ms / 1000;
+    if (this.ema > 20) { this.hi += s; this.lo = 0; } else if (this.ema < 13) { this.lo += s; this.hi = 0; } else this.hi = this.lo = 0;
+    let ns = this.scale;
+    if (this.hi > 1 && this.scale > this.min) { ns = Math.max(this.min, Math.round((this.scale - 0.1) * 10) / 10); this.hi = 0; }
+    else if (this.lo > 2 && this.scale < 1) { ns = Math.min(1, Math.round((this.scale + 0.1) * 10) / 10); this.lo = 0; }
+    if (ns === this.scale) return false;
+    this.scale = ns; this.changes++; renderer.setPixelRatio(basePixelRatio() * ns); resize(); return true;
+  },
+};
 function startMission() {
   disposeScene(); applyQuality(); menuClear();
   const scene = (G.scene = new THREE.Scene()), ws = (G.wscene = new THREE.Scene());
@@ -237,9 +256,14 @@ function startMission() {
   else { G.state = 'brief'; show('briefov'); G.player.update(0.016); }
 }
 function beginMission() { if (G.state !== 'brief') return; show(null); G.state = 'playing'; last = performance.now(); toast(MISSIONS[G.mission.def.type].name + ' — ' + G.mission.def.stages[0].title.toUpperCase(), 4); lock(); }
+// Raw (unaccelerated) mouse input where the browser supports it; plain pointer lock otherwise.
 function lock() {
-  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => { $('phint').textContent = 'CLICK RESUME AGAIN TO RE-CAPTURE THE MOUSE'; }); } catch (e) { /* retried by user */ }
+  const fail = () => { $('phint').textContent = 'CLICK RESUME AGAIN TO RE-CAPTURE THE MOUSE'; };
+  const plain = () => { try { const q = canvas.requestPointerLock(); if (q && q.catch) q.catch(fail); } catch (e) { fail(); } };
+  if (!G.rawInput) return plain();
+  try { const p = canvas.requestPointerLock({ unadjustedMovement: true }); if (p && p.catch) p.catch(plain); } catch (e) { plain(); }
 }
+G.lock = lock;
 function show(id) { for (const k of ['menu', 'pause', 'end', 'load', 'briefov']) $(k).classList.toggle('on', k === id); }
 function pause() { if (G.state !== 'playing') return; G.state = 'paused'; $('phint').textContent = 'MISSION ON HOLD'; show('pause'); G.inp.k = {}; G.inp.lmb = G.inp.rmb = false; }
 function resume() { if (G.state !== 'paused') return; if (TEST) { G.state = 'playing'; show(null); } else lock(); }
@@ -289,14 +313,17 @@ function updateHUD(dt) {
   setText('medi', u && u.type === 'med' ? 'APPLYING MEDKIT…' : `MEDKIT <b>${P.inv.med}</b> [H] · STIM <b>${P.inv.stim}</b> [X]`);
   setText('wn', w.name + (P.reloading ? ' — RELOADING' : ''));
   setText('am', w.melee ? '—' : `${s.mag}<span> / ${s.reserve}</span>`);
+  const lowA = !w.melee && !P.reloading && s.mag <= Math.max(1, Math.floor(w.mag * 0.25)); setStyle('am', 'color', lowA ? (s.mag === 0 ? '#ff5a4a' : '#e8b04a') : '');
+  setText('ammohint', w.melee || P.reloading ? '' : s.mag === 0 ? (s.reserve > 0 ? 'RELOAD [R]' : 'NO AMMO') : lowA ? 'LOW AMMO' : '');
   setText('watt', attText(s.id, w.att || {}));
   setText('slots', P.slots.map((x, i) => (i === P.cur ? `<b>${i + 1} ${x.st.name}</b>` : `${i + 1} ${x.st.name}`)).join(' · '));
   setText('equip', ['frag', 'flash', 'smoke'].map((t) => `<span class="${P.throwSel === t ? 's' : ''}">${THROW_NAME[t]} <b>${P.inv[t]}</b></span>`).join('<br>') + '<br>[G] THROW · [4] CYCLE');
   setText('stat', `ENEMY AI <b>${PROFILES[G.sel.ai].label}</b><br>NIGHT VISION <b class="${G.nv ? '' : 'off'}">${G.nv ? 'ON' : 'OFF'}</b>` + (w.att && w.att.laser ? `<br>LASER <b class="${P.laserOn ? '' : 'off'}">${P.laserOn ? 'ON' : 'OFF'}</b>` : '') + `<br>HOSTILES <b>${G.enemies.filter((e) => !e.dead).length}</b>`);
   // crosshair / optic reticle / scope
   const ret = !w.melee && P.adsF > 0.85 ? w.optic.ret : null, gap = 5 + P.spread * 5.5, op = P.adsF > 0.6 || P.sprintF > 0.6 || w.melee ? 0 : 1, L = 8;
-  const cs = [[-1, -gap - L, 2, L], [-1, gap, 2, L], [-gap - L, -1, L, 2], [gap, -1, L, 2]];
-  for (let i = 0; i < 4; i++) { const st = $('c' + i).style; st.left = cs[i][0] + 'px'; st.top = cs[i][1] + 'px'; st.width = cs[i][2] + 'px'; st.height = cs[i][3] + 'px'; st.opacity = op; }
+  const ck = Math.round(gap * 2) + '|' + op;
+  if (hudCache.cross !== ck) { hudCache.cross = ck; const cs = [[-1, -gap - L, 2, L], [-1, gap, 2, L], [-gap - L, -1, L, 2], [gap, -1, L, 2]];
+  for (let i = 0; i < 4; i++) { const st = $('c' + i).style; st.left = cs[i][0] + 'px'; st.top = cs[i][1] + 'px'; st.width = cs[i][2] + 'px'; st.height = cs[i][3] + 'px'; st.opacity = op; } }
   setStyle('ret', 'display', ret === 'dot' || ret === 'holo' ? 'block' : 'none'); if (ret && ret !== 'scope' && hudCache.retc !== ret) { hudCache.retc = ret; $('ret').className = ret; }
   setStyle('scope', 'display', P.scoped ? 'block' : 'none');
   if (P.scoped) setText('zoomv', `${s.zoom.toFixed(2)}&times;` + (w.optic.zoom[1] > w.optic.zoom[0] ? ' <i>WHEEL</i>' : '') + (P.steady ? ' <i>STEADY</i>' : P.breath > 1 ? ' <i>SHIFT: HOLD BREATH</i>' : ''));
@@ -396,17 +423,26 @@ function step(dt) {
 }
 G.step = step;
 let last = performance.now();
+renderer.info.autoReset = false; // counted per frame (world + view model), reset below
+let ovT = 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (G.state === 'playing') step(dt);
+  const ms = now - last, dt = Math.min(0.05, ms / 1000); last = now;
+  G.pacing.feed(ms);
+  if (G.state === 'playing') step(dt); // mouse look is applied per event delta, independent of dt
+  renderer.info.reset();
   if (G.state === 'menu') menuRender(dt);
   else if (G.scene) {
     renderer.setViewport(0, 0, innerWidth, innerHeight);
     renderer.clear(); renderer.render(G.scene, G.camera);
     renderer.clearDepth(); renderer.render(G.wscene, G.wcam);
   }
+  if (G.overlay && (ovT -= ms) <= 0) { // performance overlay (Settings or F3), refreshed 4x per second
+    ovT = 250; const P = G.pacing, i = renderer.info.render;
+    $('perfov').innerHTML = `${Math.round(1000 / P.ema)} FPS · ${P.ema.toFixed(1)} ms<br>WORST ${P.worst.toFixed(1)} ms<br>SCALE ${Math.round(P.scale * 100)}%${G.adaptive ? '' : ' (FIXED)'}<br>${i.calls} CALLS · ${Math.round(i.triangles / 1000)}K TRIS`;
+  }
 }
+function setOverlay(on) { G.overlay = on; $('perfov').style.display = on ? 'block' : 'none'; $('ovchk').checked = on; saveSettings(); }
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   G.camera.aspect = G.wcam.aspect = innerWidth / innerHeight; G.camera.updateProjectionMatrix(); G.wcam.updateProjectionMatrix();
@@ -431,6 +467,7 @@ addEventListener('keydown', (ev) => {
   else if (ev.code === 'KeyX') P.startUse('stim');
   else if (ev.code === 'KeyV') P.startUse('melee');
   else if (ev.code === 'Digit4') P.cycleThrow();
+  else if (ev.code === 'F3') { ev.preventDefault(); setOverlay(!G.overlay); }
   else if (G.range && /^Digit[5678]$/.test(ev.code)) G.range.key(ev.code);
   else if (/^Digit[123]$/.test(ev.code)) P.switchTo(+ev.code[5] - 1);
   else if (ev.code === 'Escape' && TEST) pause();
@@ -526,6 +563,9 @@ $('content').addEventListener('click', (ev) => {
 const slider = (id, key, fmt, apply) => { const el = $(id); el.value = G[key]; $(id + 'v').textContent = fmt(G[key]); el.addEventListener('input', () => { G[key] = +el.value; $(id + 'v').textContent = fmt(G[key]); saveSettings(); if (apply) apply(); }); };
 if (G.vol == null) G.vol = 0.75;
 slider('sens', 'sens', (v) => v.toFixed(2)); slider('fov', 'fov', (v) => v); slider('vol', 'vol', (v) => Math.round(v * 100), () => { if (G.audio.master) G.audio.master.gain.value = G.vol; });
+const chk = (id, key, after) => { const el = $(id); el.checked = !!G[key]; el.addEventListener('change', () => { G[key] = el.checked; saveSettings(); if (after) after(); }); };
+chk('adchk', 'adaptive', () => { if (!G.adaptive) { G.pacing.scale = 1; renderer.setPixelRatio(basePixelRatio()); resize(); } }); chk('ovchk', 'overlay', () => setOverlay(G.overlay)); chk('rawchk', 'rawInput');
+setOverlay(G.overlay);
 document.querySelectorAll('.opts[data-k="quality"] .opt').forEach((o) => o.classList.toggle('sel', o.dataset.v === G.sel.quality));
 const begin = () => { G.audio.init(); if (G.audio.master) G.audio.master.gain.value = G.vol; startMission(); };
 $('start').onclick = () => { G.sel.mode = 'mission'; begin(); }; $('train').onclick = () => { G.sel.mode = 'range'; begin(); }; $('again').onclick = begin; $('prestart').onclick = begin;

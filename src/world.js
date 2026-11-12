@@ -79,6 +79,7 @@ class Builder {
     if (o.col) {
       const b = P.box, cs = Math.abs(Math.cos(ry)), sn = Math.abs(Math.sin(ry)), k2 = o.shrink ?? 1;
       const hx = (Math.max(Math.abs(b.min.x), Math.abs(b.max.x)) * sx * cs + Math.max(Math.abs(b.min.z), Math.abs(b.max.z)) * sz * sn) * k2, hz = (Math.max(Math.abs(b.min.x), Math.abs(b.max.x)) * sx * sn + Math.max(Math.abs(b.min.z), Math.abs(b.max.z)) * sz * cs) * k2;
+      if (!o.mat) o = { ...o, mat: /container|barrel|truck|pipes|tower|street|wheels/.test(name) ? 'metal' : /rock|cinder/.test(name) ? 'concrete' : /barrier/.test(name) ? 'plastic' : 'wood' };
       this.collider(x - hx, y, z - hz, x + hx, y + b.max.y * sy * (o.shrinkY ?? 1), z + hz, o);
     }
     return P;
@@ -108,12 +109,12 @@ class Builder {
     }
     if (o.col !== false) {
       const ex = Math.abs(cs) * hw + Math.abs(sn) * hd, ez = Math.abs(sn) * hw + Math.abs(cs) * hd;
-      this.collider(x - ex, y, z - ez, x + ex, y + h, z + ez, o);
+      this.collider(x - ex, y, z - ez, x + ex, y + h, z + ez, o.mat ? o : { ...o, mat: SURF[k] || 'concrete' });
     }
     return this;
   }
   collider(x0, y0, z0, x1, y1, z1, o = {}) {
-    this.col.push({ x0, x1, y0, y1, z0, z1, solid: o.solid !== false, sight: o.sight !== false, bullet: o.bullet !== false, walk: !!o.walk, nocover: !!o.nocover });
+    this.col.push({ x0, x1, y0, y1, z0, z1, solid: o.solid !== false, sight: o.sight !== false, bullet: o.bullet !== false, walk: !!o.walk, nocover: !!o.nocover, mat: o.mat || 'concrete' });
   }
   geo(k, hex, g, m, o = {}) {
     const B = this.buf(k), col = this.color(hex, o.tint);
@@ -400,27 +401,27 @@ function room(B, tex, hex, x0, z0, x1, z1, h, d = {}, t = 0.3) {
 }
 export function crate(B, x, z, s = 1, y = 0, hex = 0x5d4c34) { B.box('wood', hex, x, y, z, s, s, s, { rot: 0 }); }
 function barrel(B, x, z, hex = 0x4a5a48) {
-  if (B.prop('barrel', x, 0, z, B.rng() * 6, 0.92, { tint: hex === 0x4a5a48 ? 0x8a9a80 : 0xffffff })) return B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1.05, z + 0.33);
+  if (B.prop('barrel', x, 0, z, B.rng() * 6, 0.92, { tint: hex === 0x4a5a48 ? 0x8a9a80 : 0xffffff })) return B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1.05, z + 0.33, { mat: 'metal' });
   B.geo('metal', hex, new THREE.CylinderGeometry(0.33, 0.33, 1, 10), M(x, 0.5, z));
   B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1, z + 0.33);
 }
 export function sandbags(B, x, z, len, alongX) {
   const w = alongX ? len : 0.75, d = alongX ? 0.75 : len;
   B.box('plain', 0x6a6046, x, 0, z, w, 0.7, d, { col: false }); B.box('plain', 0x5f573f, x, 0.7, z, w * 0.96, 0.35, d * 0.7, { col: false });
-  B.collider(x - w / 2, 0, z - d / 2, x + w / 2, 1.05, z + d / 2);
+  B.collider(x - w / 2, 0, z - d / 2, x + w / 2, 1.05, z + d / 2, { mat: 'dirt' });
 }
 function container(B, x, z, alongX, hex, stack = 1) {
   const w = alongX ? 6.1 : 2.5, d = alongX ? 2.5 : 6.1;
   for (let i = 0; i < stack; i++) {
     const ox = i ? 0.15 : 0;
-    if (B.prop((hex >> 4) % 2 ? 'container_red' : 'container_green', x + ox, i * 2.6 - 0.04, z, alongX ? 0 : Math.PI / 2, [6.1 / 5.71, 1, 2.5 / 2.56], { tint: [0xb0b4b8, 0x8e9498, 0xa4a098][(hex >> 8) % 3] })) B.collider(x + ox - w / 2, i * 2.6, z - d / 2, x + ox + w / 2, i * 2.6 + 2.6, z + d / 2);
+    if (B.prop((hex >> 4) % 2 ? 'container_red' : 'container_green', x + ox, i * 2.6 - 0.04, z, alongX ? 0 : Math.PI / 2, [6.1 / 5.71, 1, 2.5 / 2.56], { tint: [0xb0b4b8, 0x8e9498, 0xa4a098][(hex >> 8) % 3] })) B.collider(x + ox - w / 2, i * 2.6, z - d / 2, x + ox + w / 2, i * 2.6 + 2.6, z + d / 2, { mat: 'metal' });
     else B.box('metal', hex, x + ox, i * 2.6, z, w, 2.6, d, { tint: 0.2 });
   }
 }
 function truck(B, x, z, rot, hex = 0x3d4532, cover = 0x4f5340) {
   const cs = Math.cos(rot), sn = Math.sin(rot), L = (lx, lz) => [x + lx * cs + lz * sn, z - lx * sn + lz * cs];
   const ex = Math.abs(cs) * 1.3 + Math.abs(sn) * 3.3, ez = Math.abs(sn) * 1.3 + Math.abs(cs) * 3.3, [cx, cz] = L(0, -0.5);
-  B.collider(cx - ex, 0, cz - ez, cx + ex, 2.9, cz + ez);
+  B.collider(cx - ex, 0, cz - ez, cx + ex, 2.9, cz + ez, { mat: 'metal' });
   if (B.prop('vehicle_truck', x, 0, z, rot, 1.18, { tint: hex === 0x3d4532 ? 0x5e6650 : 0x70757c })) return;
   const part = (k, h, lx, y, lz, w, hh, d) => { const [px, pz] = L(lx, lz); B.box(k, h, px, y, pz, w, hh, d, { rot, col: false }); };
   part('plain', 0x1c1d1f, 0, 0.55, 0, 1.2, 0.35, 6.2);
@@ -452,7 +453,7 @@ function tree(B, x, z, col = true) {
     if (col) B.prop(k, x, -0.1, z, ry, s, { shadow: true, tint, cell: LOD_CELL });
     const lk = col ? lodKey(x, z) : 'border'; (B.lodInst[lk] || (B.lodInst[lk] = [])).push({ m: M(x, -0.1, z, 0, ry, 0, s, s, s), tint });
     if (col) B.canopy.push(M(x, 4.6 * s, z, 0, 0, 0, 2.3 * s, 5.2 * s, 2.3 * s)); // cheap shadow-only stand-in for the foliage
-    if (col) B.collider(x - 0.3, 0, z - 0.3, x + 0.3, 6, z + 0.3);
+    if (col) B.collider(x - 0.3, 0, z - 0.3, x + 0.3, 6, z + 0.3, { mat: 'wood' });
     return;
   }
   B.geo('wood', 0x35291f, new THREE.CylinderGeometry(tr * 0.55, tr, h, 6), M(x, h / 2, z), { uv: 2 });
@@ -467,7 +468,7 @@ function rock(B, x, z, s, col = true) {
   if (A.parts.rock_medium_1) {
     const k = 'rock_medium_' + (1 + Math.floor(r() * 3)), b = A.parts[k].box, f = 2 / (b.max.x - b.min.x), ry = Math.floor(r() * 4) * Math.PI / 2;
     B.prop(k, x, -0.12 * sy, z, ry, [sx * f, sy * 0.95 / b.max.y, sz * f], { tint: 0x7a8086 });
-    if (col) B.collider(x - sx * 0.86, 0, z - sz * 0.86, x + sx * 0.86, sy * 0.9, z + sz * 0.86);
+    if (col) B.collider(x - sx * 0.86, 0, z - sz * 0.86, x + sx * 0.86, sy * 0.9, z + sz * 0.86, { mat: 'concrete' });
     return;
   }
   B.geo('concrete', 0x474b4c, new THREE.DodecahedronGeometry(1, 0), M(x, sy * 0.3, z, r() * 3, r() * 3, r() * 3, sx, sy, sz), { uv: 2 });
@@ -604,7 +605,7 @@ function forest(B, W, scene) {
   for (const [x0, z0, x1, z1] of [[-59, -59, 59, -58], [-59, 58, 59, 59], [-59, -59, -58, 59], [58, -59, 59, 59]]) B.collider(x0, 0, z0, x1, 12, z1, { sight: false });
   return {
     name: 'FOREST OUTPOST', bounds: { x0: -60, x1: 60, z0: -60, z1: 60 }, spawn: { x: -6.6, z: 54, yaw: 0 },
-    env: { fog: [0x0a1017, 0.021], bg: 0x070b12, hemi: [0x8096c0, 0x232c1c, 2.9], moon: [0xa4b9e6, 3.4, [-35, 60, 30]], viewRange: 40, detect: 0.75, shotMul: 1, amb: 'forest' },
+    env: { fog: [0x0a1017, 0.021], bg: 0x070b12, hemi: [0x8096c0, 0x232c1c, 2.9], moon: [0xa4b9e6, 3.4, [-35, 60, 30]], viewRange: 40, detect: 0.75, shotMul: 1, amb: 'forest', ground: 'dirt' },
     objective: { pos: [-7.3, 0.8, -23.3], kind: 'intel', hold: 0, prompt: 'Take intelligence package', text: 'Locate the intelligence package in the outpost command hut', done: 'INTEL SECURED' },
     extraction: { pos: [44, 0, -46], text: 'Reach the extraction flare in the north-east clearing' },
     routes: [
@@ -725,7 +726,7 @@ function warehouse(B, W, scene) {
   B.box('emis', 0x163a20, -43, 0, 4, 3.4, 0.03, 3.4, { col: false, tint: 0 });
   return {
     name: 'INDUSTRIAL WAREHOUSE', bounds: { x0: -48, x1: 48, z0: -32, z1: 32 }, spawn: { x: 44.5, z: 27, yaw: Math.PI / 2 },
-    env: { fog: [0x06080b, 0.012], bg: 0x05070a, hemi: [0x5a6680, 0x16181c, 0.75], moon: [0x8fa6d6, 1.5, [30, 60, -22]], viewRange: 44, detect: 1, shotMul: 0.85, amb: 'warehouse' },
+    env: { fog: [0x06080b, 0.012], bg: 0x05070a, hemi: [0x5a6680, 0x16181c, 0.75], moon: [0x8fa6d6, 1.5, [30, 60, -22]], viewRange: 44, detect: 1, shotMul: 0.85, amb: 'warehouse', ground: 'concrete' },
     objective: { pos: [-34.3, 0.8, -22], kind: 'terminal', hold: 3, prompt: 'Hold to access secured terminal', text: 'Access the secured terminal in the warehouse office', done: 'DATA EXTRACTED' },
     extraction: { pos: [-43, 0, 4], text: 'Exfiltrate through the west back lot' },
     routes: [
@@ -752,6 +753,8 @@ function warehouse(B, W, scene) {
   };
 }
 
+// builder texture kind -> bullet impact surface
+const SURF = { metal: 'metal', fence: 'metal', wood: 'wood', concrete: 'concrete', plain: 'plastic', dirt: 'dirt', grass: 'dirt', emis: 'metal' };
 const MAPS = {}; // extra maps registered by other modules (e.g. the training range)
 export function registerMap(id, fn) { MAPS[id] = fn; }
 export function buildWorld(id, scene) {

@@ -23,7 +23,7 @@ export const PALETTES = {
 };
 
 let T = null; // template data, built once
-const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), v4 = new THREE.Vector3(), v5 = new THREE.Vector3();
+const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), v4 = new THREE.Vector3(), v5 = new THREE.Vector3(), POLE = new THREE.Vector3(), IKT = new THREE.Vector3();
 const q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
 
 function subclip(name, lower) { const c = A.clips[name]; return new THREE.AnimationClip(name + (lower ? '_L' : '_U'), c.duration, c.tracks.filter((t) => LOWER.test(t.name) === lower)); }
@@ -211,8 +211,8 @@ export class Character {
     if (this.ikW > 0.5 && this.gun) {
       this.gun.updateWorldMatrix(true, false);
       const t = v3.copy(this.gripL).applyMatrix4(this.gun.matrixWorld); const tx = t.x, ty = t.y, tz = t.z;
-      this.root.getWorldQuaternion(q1); const pole = new THREE.Vector3(-0.55, -0.8, 0.2).applyQuaternion(q1);
-      ik2(B.upperarm_l, B.lowerarm_l, B.hand_l, new THREE.Vector3(tx, ty, tz), pole);
+      this.root.getWorldQuaternion(q1); const pole = POLE.set(-0.55, -0.8, 0.2).applyQuaternion(q1);
+      ik2(B.upperarm_l, B.lowerarm_l, B.hand_l, IKT.set(tx, ty, tz), pole);
     }
   }
   // world-space queries ------------------------------------------------------------------------

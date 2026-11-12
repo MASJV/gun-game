@@ -8,7 +8,9 @@ export function makeBallistics(G) {
   // Returns { d, kind: 'world' | 'enemy' | 'player' | null, wh, e, part, mult }.
   function trace(o, d, max, shooter) {
     const wh = rayBoxes(G.world.colliders, o.x, o.y, o.z, d.x, d.y, d.z, max, 'bullet');
-    const r = { d: wh ? wh.d : max, kind: wh ? 'world' : null, wh, e: null, part: null, mult: 1 };
+    let w = wh;
+    if (d.y < -1e-4) { const tg = -o.y / d.y; if (tg > 0 && tg < (w ? w.d : max)) w = { d: tg, c: { mat: G.world.env.ground || 'dirt', ground: true }, nx: 0, ny: 1, nz: 0 }; } // the ground plane
+    const r = { d: w ? w.d : max, kind: w ? 'world' : null, wh: w, e: null, part: null, mult: 1 };
     for (const e of G.enemies) {
       if (e.dead || e === shooter) continue;
       const h = e.rayHit(o, d, r.d);

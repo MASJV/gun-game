@@ -41,6 +41,7 @@ export function saveLoadout(l) { try { localStorage.setItem('sp2_loadout', JSON.
 export function statsFor(id, att = {}) {
   const w = WEAPONS[id], s = { ...w, id, att, sup: !!att.muzzle, optic: OPTICS[att.optic] || OPTICS.iron };
   if (w.melee) return s;
+  s.flash = { ak: 0.9, m4: 0.8, dmr: 1.05, sniper: 1.3, pistol: 0.55, smg: 0.65, shotgun: 1.35 }[id] || 0.8;
   s.rk = w.rk || 'rifle'; s.ins = w.ins || 0.6;
   if (att.muzzle) { s.noise = Math.round(w.noise * 0.3); s.recoil *= 0.92; if (s.falloff) s.falloff = [s.falloff[0] * 0.85, s.falloff[1]]; }
   if (att.grip) { s.recoil *= 0.8; s.recoilH *= 0.8; s.hip *= 0.88; s.adsT *= 1.06; }
