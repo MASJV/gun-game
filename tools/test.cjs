@@ -134,7 +134,8 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       P.pos.set(40, 0, 12); P.yaw = 0; P.pitch = 0; place(40, 0, 0); sim(0.5); G.inp.rmb = true; sim(0.5);
       P.pitch = -0.045; sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.2); o.body = 100 - e.hp;
       e.hp = 100; e.set('PATROL'); e.wantCrouch = false; e.waitT = 1e9; e.release(); place(40, 0, 0); calm(); e.stun = 0; sim(0.6);
-      e.ch.refresh(); const h = e.ch.eye(new G.v1.constructor()); P.pitch = Math.atan2(h.y + 0.03 - G.camera.position.y, 12); sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.1); o.head = e.dead ? 'kill' : 100 - e.hp; G.inp.rmb = false;
+      // aim and fire in the same frame: the guard's idle / flinch animation moves his head
+      sim(0.8); e.ch.refresh(); const h = e.ch.eye(new G.v1.constructor()), c = G.camera.position; P.pitch = Math.atan2(h.y + 0.02 - c.y, Math.hypot(h.x - c.x, h.z - c.z)); P.yaw = Math.atan2(-(h.x - c.x), -(h.z - c.z)); P.ry = P.rp = 0; G.inp.lmbPressed = true; G.inp.lmb = true; G.step(1 / 60); G.inp.lmb = false; sim(0.1); o.head = e.dead ? 'kill' : 100 - e.hp; G.inp.rmb = false;
       return o;
     });
     check('combat: body hit = base damage, head hit = 2.5x', o.body === 36 && (o.head === 'kill' || o.head === 90), o);
@@ -494,29 +495,121 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('range: a normal mission starts afterwards', await p.evaluate(() => { const G = window.__SP; return G.state === 'playing' && !G.range && G.enemies.length === 10; }));
   });
 
+  await run('grid', async () => {
+    for (const map of ['forest', 'warehouse']) {
+      await start(map, 'tactical');
+      const o = await p.evaluate(() => {
+        const G = window.__SP, W = G.world, cols = W.colliders, flat = cols.slice(), b = W.bounds; let s = 12345;
+        const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff), ray = window.__rayBoxes;
+        let n = 0, bad = 0, hits = 0, ties = 0; window.__gbad = null; const flags = ['sight', 'bullet', 'solid'];
+        for (let i = 0; i < 20000; i++) {
+          const ox = b.x0 - 5 + rnd() * (b.x1 - b.x0 + 10), oz = b.z0 - 5 + rnd() * (b.z1 - b.z0 + 10), oy = rnd() * 6;
+          let dx = rnd() * 2 - 1, dy = (rnd() * 2 - 1) * 0.4, dz = rnd() * 2 - 1; if (i % 50 === 0) { dx = 0; dz = 0; dy = -1; } const l = Math.hypot(dx, dy, dz); dx /= l; dy /= l; dz /= l;
+          const max = rnd() < 0.3 ? 200 : 1 + rnd() * 40, f = flags[i % 3];
+          const a = ray(cols, ox, oy, oz, dx, dy, dz, max, f), c = ray(flat, ox, oy, oz, dx, dy, dz, max, f); n++;
+          if (!!a !== !!c || (a && Math.abs(a.d - c.d) > 1e-9)) { bad++; if (!window.__gbad) window.__gbad = { o: [ox, oy, oz], d: [dx, dy, dz], max, f, a: a && [a.d, a.c.x0, a.c.z0], c: c && [c.d, c.c.x0, c.c.z0] }; } else if (a && a.c !== c.c) ties++; if (c) hits++; // equal distance on two boxes = the same impact point
+        }
+        // dynamic tail still works: a box added after the grid was built
+        const extra = { x0: 0, x1: 1, y0: 0, y1: 3, z0: 30, z1: 31, solid: true, sight: true, bullet: true }; cols.push(extra);
+        let tail = true; for (let i = 0; i < 400; i++) { const ox = b.x0 + rnd() * (b.x1 - b.x0), oz = b.z0 + rnd() * (b.z1 - b.z0), A = Math.atan2(0.5 - ox, 30.5 - oz); const r1 = ray(cols, ox, 1, oz, Math.sin(A), 0, Math.cos(A), 120, 'bullet'), r2 = ray(cols.slice(), ox, 1, oz, Math.sin(A), 0, Math.cos(A), 120, 'bullet'); if ((r1 && r1.d) !== (r2 && r2.d)) tail = false; } cols.splice(cols.indexOf(extra), 1);
+        // the player collision query agrees with brute force
+        let qbad = 0; for (let i = 0; i < 4000; i++) { const x = b.x0 + rnd() * (b.x1 - b.x0), z = b.z0 + rnd() * (b.z1 - b.z0), y = rnd() * 2; const h1 = G.player.hits(x, y, z), h2 = flat.find((c) => c.solid && x + 0.34 > c.x0 && x - 0.34 < c.x1 && z + 0.34 > c.z0 && z - 0.34 < c.z1 && y < c.y1 - 0.001 && y + G.player.height > c.y0) || null; if (!!h1 !== !!h2) qbad++; }
+        const t0 = performance.now(); for (let i = 0; i < 20000; i++) ray(cols, rnd() * 80 - 40, 1.5, rnd() * 80 - 40, Math.sin(i), 0, Math.cos(i), 40, 'sight'); const tg = performance.now() - t0;
+        const t1 = performance.now(); for (let i = 0; i < 20000; i++) ray(flat, rnd() * 80 - 40, 1.5, rnd() * 80 - 40, Math.sin(i), 0, Math.cos(i), 40, 'sight'); const tb = performance.now() - t1;
+        return { n, bad, ties, hits, tail, qbad, speedup: +(tb / tg).toFixed(1), first: window.__gbad };
+      });
+      check(`grid/${map}: grid raycasts and collision queries are identical to brute force, and faster`, o.bad === 0 && o.hits > 2000 && o.tail && o.qbad === 0 && o.speedup > 1.5, o);
+    }
+  });
+
   await run('pacing', async () => {
     await start('forest', 'tactical');
     const o = await p.evaluate(() => {
       const G = window.__SP, P = G.player, pc = G.pacing, o = {}; calm();
-      o.inactiveInTests = !pc.active; pc.active = true; G.adaptive = true; const s0 = pc.scale;
-      for (let i = 0; i < 120; i++) pc.feed(33); o.down = pc.scale; o.ema = +pc.ema.toFixed(1); o.worst = pc.worst;
-      for (let i = 0; i < 1200; i++) pc.feed(8); o.up = pc.scale;
-      for (let i = 0; i < 300; i++) pc.feed(80); o.floor = pc.scale; for (let i = 0; i < 60; i++) pc.feed(900); o.ignoresHitches = pc.ema < 100;
-      for (let i = 0; i < 1200; i++) pc.feed(8); o.restored = pc.scale; for (let i = 0; i < 120; i++) pc.feed(33); G.adaptive = false; pc.feed(40); o.offRespected = pc.scale === 1; G.adaptive = true; pc.active = false; o.s0 = s0;
+      o.inactiveInTests = !pc.active; pc.active = true; G.adaptive = true; G.fpsTarget = '60'; pc.setScale(1); pc.gpuMs = -1; pc.refreshMs = 16.7; pc.ceil = 1; pc.ceilT = 0; pc.recent = 0; const s0 = pc.scale; const gpu0 = pc.gpuMs;
+      const feed = (ms, n) => { for (let i = 0; i < n; i++) pc.feed(ms); };
+      feed(16.7, 300); o.vsync60 = pc.scale; // a healthy vsync-locked 60 Hz display: nothing changes
+      feed(33, 120); o.down = pc.scale; o.ema = +pc.ema.toFixed(1);
+      feed(16.7, 600); o.recoveredOnVsync = pc.scale; // the V2.1 controller could never recover here (needed < 13 ms)
+      feed(80, 600); o.floor = pc.scale; feed(900, 60); o.ignoresHitches = pc.ema < 100;
+      feed(16.7, 1500); o.restored = pc.scale;
+      // oscillation guard: raising the scale makes frames late again -> that level becomes a ceiling for a while
+      feed(16.7, 10); pc.setScale(0.8); feed(16.7, 300); const up = pc.scale; feed(30, 45); const back = pc.scale; feed(16.7, 400); o.ceiling = [up, back, pc.scale, +pc.ceil.toFixed(1)];
+      // high-refresh target follows the display estimate
+      pc.refreshMs = 16.7; feed(6.94, 400); G.fpsTarget = 'refresh'; o.refreshTarget = +pc.targetMs().toFixed(2); o.refreshHz = Math.round(1000 / pc.refreshMs); G.fpsTarget = '60';
+      // a slow game must not be mistaken for a slow display
+      feed(33, 600); o.slowDisplayEst = +pc.refreshMs.toFixed(1);
+      // CPU-bound: frames are late but the GPU has headroom -> resolution stays (it would not help)
+      pc.setScale(1); pc.ceil = 1; pc.gpuMs = 4; feed(33, 300); o.cpuBound = pc.scale; pc.gpuMs = 15; feed(33, 120); o.gpuBound = pc.scale; pc.gpuMs = gpu0; pc.setScale(1);
+      G.adaptive = false; pc.feed(40); o.offRespected = pc.scale === 1; G.adaptive = true; pc.active = false; o.s0 = s0;
+      // stutter detection and log
+      const n0 = pc.stutters; feed(16.7, 120); pc.feed(70); o.stutter = [pc.stutters - n0, pc.log[0] && Math.round(pc.log[0].ms)];
+      const st = pc.stats(); o.stats = [Math.round(st.avg), Math.round(st.max), Math.round(st.low1)];
       // mouse look does not depend on the frame time
       const look = (dt) => { P.yaw = 0; G.inp.mx = 200; G.step(dt); return P.yaw; }; o.look = [look(0.05), look(0.005)].map((v) => +v.toFixed(5));
-      // overlay toggle with F3
-      press('F3'); o.overlay = getComputedStyle(document.getElementById('perfov')).display; press('F3'); o.overlayOff = getComputedStyle(document.getElementById('perfov')).display;
+      // overlay toggle with F3 and content
+      press('F3'); o.overlay = getComputedStyle(document.getElementById('perfov')).display; o.ovText = document.getElementById('perfov').textContent; press('F3'); o.overlayOff = getComputedStyle(document.getElementById('perfov')).display;
       // raw-input pointer lock falls back when the browser rejects the option
       const c = document.getElementById('c'), orig = c.requestPointerLock, calls = []; G.rawInput = true;
       c.requestPointerLock = (opt) => { calls.push(opt ? 'raw' : 'plain'); return opt ? Promise.reject(new DOMException('no', 'NotSupportedError')) : Promise.resolve(); };
       G.lock(); return new Promise((res) => setTimeout(() => { c.requestPointerLock = orig; o.lockCalls = calls; res(o); }, 50));
     });
     const src = require('fs').readFileSync(require('path').resolve(__dirname, '..', 'src', 'character.js'), 'utf8'), body = src.slice(src.indexOf('  update(dt, s) {'), src.indexOf('  // world-space queries'));
-    check('pacing: adaptive render scale drops under slow frames, never below 60 %, recovers, ignores hitches', o.inactiveInTests && o.s0 === 1 && o.down < 1 && o.floor === 0.6 && o.restored === 1 && o.up === 1 && o.ignoresHitches && o.offRespected, o);
-    check('pacing: frame-time stats (EMA / worst) are tracked; overlay toggles with F3', o.ema > 25 && o.worst >= 33 && o.overlay === 'block' && o.overlayOff === 'none', [o.ema, o.worst, o.overlay, o.overlayOff]);
+    check('pacing: steady at vsync, drops under load, recovers on a vsync-locked display, never below 60 %, ignores hitches', o.inactiveInTests && o.s0 === 1 && o.vsync60 === 1 && o.down < 1 && o.recoveredOnVsync > o.down && o.floor === 0.6 && o.restored === 1 && o.ignoresHitches && o.offRespected, o);
+    check('pacing: oscillation guard, refresh-rate target, slow game not a slow display, CPU-bound slowdowns keep full resolution', o.ceiling[0] === 0.9 && o.ceiling[1] === 0.8 && o.ceiling[2] === 0.8 && o.ceiling[3] === 0.8 && o.refreshTarget < 7.5 && o.refreshHz >= 140 && o.slowDisplayEst < 20 && o.cpuBound === 1 && o.gpuBound < 1, [o.ceiling, o.refreshTarget, o.refreshHz, o.slowDisplayEst, o.cpuBound, o.gpuBound]);
+    check('pacing: stutters detected and logged; stats and F3 overlay show frame times, CPU split and resolution', o.stutter[0] === 1 && o.stutter[1] === 70 && o.overlay === 'block' && o.overlayOff === 'none' && /p99/.test(o.ovText) && /CPU ms/.test(o.ovText) && /GPU ms/.test(o.ovText) && /RES \d+×\d+/.test(o.ovText) && /STUTTERS/.test(o.ovText), [o.stutter, o.stats, o.ovText.slice(0, 200)]);
     check('input: mouse look is independent of frame time; raw input falls back to plain pointer lock', o.look[0] === o.look[1] && o.look[0] !== 0 && o.lockCalls.join() === 'raw,plain', [o.look, o.lockCalls]);
-    check('pacing: no per-frame allocations in Character.update()', !/new THREE\./.test(body), body.match(/new THREE\.\w+/g));
+    check('pacing: no per-frame allocations in Character.update()', !/new THREE\./.test(body) && !/= \{\}|\[\.\.\./.test(body), body.match(/new THREE\.\w+/g));
+  });
+
+  await run('latency', async () => {
+    await start('warehouse', 'tactical', { primary: 'ak' });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}; const e = solo(0); calm();
+      e.release(); e.pos.set(40, 0, 0); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.set('PATROL'); e.sync(); e.ch.refresh();
+      P.pos.set(40, 0, 12); P.yaw = 1.2; P.pitch = 0; G.inp.rmb = true; for (let i = 0; i < 40; i++) G.step(1 / 60); // aiming well away from the target
+      // in ONE frame: the mouse turns onto the target and the trigger is pulled. The round must go where the view now points.
+      const c = G.camera.position, want = Math.atan2(-(e.pos.x - c.x), -(e.pos.z - c.z)), sens = 0.0022 * G.sens * (Math.tan((P.adsFov() * Math.PI) / 360) / Math.tan((G.fov * Math.PI) / 360));
+      G.inp.mx = -(want - P.yaw) / sens; P.pitch = Math.atan2(1.0 - c.y, 12); P.ry = P.rp = 0;
+      G.inp.lmb = true; G.inp.lmbPressed = true; G.step(1 / 60); G.inp.lmb = false; G.inp.rmb = false;
+      o.hit = 100 - e.hp; o.yawErr = +Math.abs(P.yaw - want).toFixed(4);
+      return o;
+    });
+    check('input latency: a shot fired in the same frame as a mouse flick uses the new view direction', o.hit > 0 && o.yawErr < 0.01, o);
+  });
+
+  await run('comfort', async () => {
+    await start('warehouse', 'tactical');
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, cam = G.camera, o = {}; calm();
+      // movement is the same at 30 / 60 / 144 Hz (sub-stepped, exact integration)
+      const mv = {};
+      for (const hz of [30, 60, 144]) {
+        const dt = 1 / hz, run = (sec, fn) => { for (let i = 0; i < Math.round(sec * hz); i++) { if (fn) fn(); G.step(dt); } };
+        P.pos.set(34, 0, 0); P.vel.set(0, 0, 0); P.yaw = 0; run(0.3); const z0 = P.pos.z; G.inp.k.KeyW = true; run(1); const walk = z0 - P.pos.z; G.inp.k.KeyW = false; const z1 = P.pos.z; run(1); const stop = z1 - P.pos.z;
+        P.pos.set(34, 0, 0); P.vel.set(0, 0, 0); run(0.3); G.inp.jump = true; let peak = 0; run(1.2, () => { peak = Math.max(peak, P.pos.y); });
+        mv[hz] = [+walk.toFixed(3), +stop.toFixed(3), +peak.toFixed(3)];
+      }
+      o.mv = mv;
+      // camera motion setting: walking with 0 % keeps the camera height steady; default has a small bob; never lateral
+      const walkCam = (cmo) => { G.camMotion = cmo; P.pos.set(34, 0, 0); P.yaw = 0; G.inp.k.KeyW = true; let ymin = 9, ymax = -9, lat = 0; for (let i = 0; i < 120; i++) { G.step(1 / 60); if (i > 30) { const y = cam.position.y; ymin = Math.min(ymin, y); ymax = Math.max(ymax, y); lat = Math.max(lat, Math.abs(cam.position.x - P.pos.x - P.leanX)); } } G.inp.k.KeyW = false; G.step(0.3); return [+(ymax - ymin).toFixed(4), +lat.toFixed(4)]; };
+      o.off = walkCam(0); o.def = walkCam(0.5); o.full = walkCam(1);
+      // sprint FOV kick scales; aiming FOV does not
+      const sprintFov = (cmo) => { G.camMotion = cmo; P.pos.set(34, 0, 0); P.yaw = 0; G.inp.k.KeyW = true; G.inp.k.ShiftLeft = true; for (let i = 0; i < 60; i++) G.step(1 / 60); const f = cam.fov; G.inp.k.KeyW = G.inp.k.ShiftLeft = false; G.step(0.5); return +(f - G.fov).toFixed(2); };
+      o.sprint = [sprintFov(0), sprintFov(1)]; G.camMotion = 0.5;
+      // the camera never smooths mouse look: rotation equals the integrated input immediately
+      P.yaw = 0; P.pitch = 0; G.inp.mx = 137; G.step(1 / 60); o.lookExact = Math.abs(cam.rotation.y - P.yaw - P.ry) < 1e-9 && Math.abs(P.yaw + 137 * 0.0022 * G.sens) < 1e-9;
+      // shadow frustum is texel-snapped (stable shadow edges)
+      const L = G.world.moon, sc = L.shadow.camera, texel = (sc.right - sc.left) / L.shadow.mapSize.x; G.followShadow(L, G.world.moonDir, { x: 3.123, z: -7.77 });
+      const F = G.world.moonDir.clone().negate(), R = new F.constructor(0, 1, 0).cross(F).normalize(), U = F.clone().cross(R).normalize(), tp = L.target.position;
+      o.snap = [Math.abs(tp.dot(R) / texel - Math.round(tp.dot(R) / texel)) < 1e-4, Math.abs(tp.dot(U) / texel - Math.round(tp.dot(U) / texel)) < 1e-4];
+      return o;
+    });
+    const m = o.mv; const same = (i, tol) => Math.max(m[30][i], m[60][i], m[144][i]) - Math.min(m[30][i], m[60][i], m[144][i]) <= tol;
+    check('movement: walk distance, stopping distance and jump height are the same at 30 / 60 / 144 Hz', same(0, 0.002) && same(1, 0.002) && same(2, 0.01) && Math.abs(m[60][2] - 1.037) < 0.01, m);
+    check('comfort: camera motion 0 % removes head bob; default bob is small; the camera never sways sideways', o.off[0] < 0.002 && o.def[0] > 0.01 && o.def[0] < o.full[0] && o.full[1] < 0.001 && o.def[1] < 0.001, [o.off, o.def, o.full]);
+    check('comfort: sprint FOV kick follows the setting; mouse look is applied unsmoothed', o.sprint[0] === 0 && o.sprint[1] > 3 && o.lookExact, [o.sprint, o.lookExact]);
+    check('rendering: shadow frustum is snapped to whole shadow-map texels', o.snap[0] && o.snap[1], o.snap);
   });
 
   await run('feedback', async () => {

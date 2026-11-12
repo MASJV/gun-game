@@ -36,7 +36,7 @@ export class Civ {
   }
   update(dt) {
     const G = this.g, P = G.player;
-    if (this.dead) { if (this.deadT < 4) { this.deadT += dt; this.ch.update(dt, { speed: 0 }); } return; }
+    if (this.dead) { if (this.deadT < 4) { this.deadT += dt; this.ch.tick(dt, { speed: 0 }, G.animEvery(this.pos)); } return; }
     this.t += dt; this.speed = 0;
     const dx = P.pos.x - this.pos.x, dz = P.pos.z - this.pos.z, d = Math.hypot(dx, dz);
     const sees = d < 40 && G.los(this.pos.x, this.pos.y + 1.5, this.pos.z, P.eyePos.x, P.eyePos.y, P.eyePos.z);
@@ -58,7 +58,8 @@ export class Civ {
       crouch = P.crouch && this.speed === 0;
     }
     if (this.moved && this.fallback && !this.reachedHint && Math.hypot(P.pos.x - this.g.mission.stage?.anchors[0].at[0], P.pos.z - this.g.mission.stage?.anchors[0].at[2]) < 7) this.reachedHint = true; // the operator finds the first location empty
-    this.ch.update(dt, { speed: this.trav ? 0 : this.speed, crouch, aim: false, lean: 0 });
+    const as = this.as || (this.as = { aim: false, lean: 0 }); as.speed = this.trav ? 0 : this.speed; as.crouch = crouch;
+    this.ch.tick(dt, as, this.state === 'follow' ? 1 : G.animEvery(this.pos));
     this.sync();
   }
 }
