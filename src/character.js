@@ -144,6 +144,7 @@ export class Character {
     }
     for (const bone in T.gear[pal]) { const m = new THREE.Mesh(T.gear[pal][bone], T.mats.gear); m.frustumCulled = false; this.bones[bone].add(m); }
   }
+  setShadow(on) { if (this.shadowOn === on) return; this.shadowOn = on; this.inner.traverse((o) => { if (o.isSkinnedMesh) o.castShadow = on; }); }
   // one-shot helpers -------------------------------------------------------------------------
   playUpper(name, { loop = false, speed = 1, fade = 0.15 } = {}) {
     if (this.dead) return 0;

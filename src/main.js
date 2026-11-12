@@ -1,7 +1,7 @@
 // SHADOW PROTOCOL V2 - game loop, mission logic, menus and HUD.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { buildWorld, rayBoxes, rnd } from './world.js';
+import { buildWorld, rayBoxes, rnd, updateLOD } from './world.js';
 import { loadAssets } from './assets.js';
 import { Player, THROW_NAME } from './player.js';
 import { WEAPONS, OPTICS, KITS, loadLoadout, saveLoadout, statsFor, attText, buildView } from './weapons.js';
@@ -189,6 +189,7 @@ function startMission() {
   const W = (G.world = buildWorld(isRange ? 'range' : G.sel.map, scene));
   if (G.sel.quality !== 'med') W.moon.shadow.mapSize.setScalar(G.sel.quality === 'high' ? 4096 : 1024);
   if (G.sel.quality === 'low') for (const m of W.meshes) if (m.userData.detail) m.visible = false; // ground clutter off
+  W.lodDist = { low: 22, med: 34, high: 52 }[G.sel.quality];
   G.nvLight = new THREE.AmbientLight(0xffffff, 0); scene.add(G.nvLight);
   G.fx = new FX(scene); G.gren = new Grenades(G);
   W.env.detect0 = W.env.detect; W.env.viewRange0 = W.env.viewRange;
@@ -385,6 +386,7 @@ function step(dt) {
   for (const e of G.enemies) e.update(dt);
   for (const c of G.civs) c.update(dt);
   if (G.range) G.range.update(dt);
+  if (G.frame % 6 === 0) updateLOD(G.world, G.camera.position);
   G.sec.update(dt); G.gren.update(dt);
   G.fx.update(dt);
   updateMission(dt);

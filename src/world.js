@@ -1,6 +1,7 @@
 // World construction: merged static geometry, AABB colliders, ray tests, nav grid, both maps.
 import * as THREE from 'three';
 import { A } from './assets.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const rnd = (a = 1, b) => (b === undefined ? Math.random() * a : a + Math.random() * (b - a));
 export const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -68,13 +69,13 @@ function M(x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) {
 }
 
 class Builder {
-  constructor() { this.b = {}; this.col = []; this.rng = seeded(4242); this.inst = {}; this.canopy = []; }
+  constructor() { this.b = {}; this.col = []; this.rng = seeded(4242); this.inst = {}; this.canopy = []; this.lod = {}; this.lodInst = {}; }
   // instanced CC0 prop (see assets.js bake); o.col: true = collider from the model bounds, o.tint: colour multiplier, o.shadow: false to skip
   prop(name, x, y, z, ry = 0, s = 1, o = {}) {
     const P = A.parts[name]; if (!P) return null;
     const sx = Array.isArray(s) ? s[0] : s, sy = Array.isArray(s) ? s[1] : s, sz = Array.isArray(s) ? s[2] : s;
-    const k = name + '|' + Math.floor((x + 200) / 48) + '|' + Math.floor((z + 200) / 48) + (o.shadow === false ? '|n' : '');
-    (this.inst[k] || (this.inst[k] = { name, shadow: o.shadow !== false, list: [] })).list.push({ m: M(x, y, z, 0, ry, 0, sx, sy, sz), tint: o.tint });
+    const cs0 = o.cell || 48, k = name + '|' + cs0 + '|' + Math.floor((x + 200) / cs0) + '|' + Math.floor((z + 200) / cs0) + (o.shadow === false ? '|n' : '');
+    (this.inst[k] || (this.inst[k] = { name, shadow: o.shadow !== false, list: [], cell: o.cell ? lodKey(x, z) : null })).list.push({ m: M(x, y, z, 0, ry, 0, sx, sy, sz), tint: o.tint });
     if (o.col) {
       const b = P.box, cs = Math.abs(Math.cos(ry)), sn = Math.abs(Math.sin(ry)), k2 = o.shrink ?? 1;
       const hx = (Math.max(Math.abs(b.min.x), Math.abs(b.max.x)) * sx * cs + Math.max(Math.abs(b.min.z), Math.abs(b.max.z)) * sz * sn) * k2, hz = (Math.max(Math.abs(b.min.x), Math.abs(b.max.x)) * sx * sn + Math.max(Math.abs(b.min.z), Math.abs(b.max.z)) * sz * cs) * k2;
@@ -82,6 +83,7 @@ class Builder {
     }
     return P;
   }
+  lodCell(key) { return this.lod[key] || (this.lod[key] = { x: (+key.split('|')[0] + 0.5) * LOD_CELL - 200, z: (+key.split('|')[1] + 0.5) * LOD_CELL - 200, full: [], lod: null, near: true }); }
   buf(k) { return this.b[k] || (this.b[k] = { p: [], n: [], u: [], c: [] }); }
   color(hex, tint) {
     const c = new THREE.Color(hex), v = tint === 0 ? 1 : 1 + (this.rng() - 0.5) * (tint ?? 0.14);
@@ -148,8 +150,15 @@ class Builder {
         const im = new THREE.InstancedMesh(part.geo, part.mat, I.list.length);
         I.list.forEach((it, i) => { im.setMatrixAt(i, it.m); im.setColorAt(i, it.tint ? c.setHex(it.tint) : white); });
         im.castShadow = I.shadow && !part.leaf; im.receiveShadow = !part.leaf; im.userData.detail = /grass|fern/.test(I.name); im.computeBoundingSphere(); im.userData.shared = true;
-        scene.add(im); out.push(im);
+        scene.add(im); out.push(im); if (I.cell) this.lodCell(I.cell).full.push(im);
       }
+    }
+    // distant trees: one cheap instanced mesh per 16 m cell, swapped in by updateLOD()
+    for (const key in this.lodInst) {
+      const L = this.lodInst[key], im = new THREE.InstancedMesh(lodTree(), LOD_MAT, L.length);
+      L.forEach((it, i) => { im.setMatrixAt(i, it.m); im.setColorAt(i, c.setHex(it.tint)); });
+      im.castShadow = false; im.receiveShadow = false; im.computeBoundingSphere(); im.userData.shared = true; scene.add(im); out.push(im);
+      if (key === 'border') im.userData.always = true; else { im.visible = false; this.lodCell(key).lod = im; }
     }
     if (this.canopy.length) { // foliage shadows from simple cones: drawn into the shadow map only
       const im = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), this.canopy.length);
@@ -419,11 +428,29 @@ function truck(B, x, z, rot, hex = 0x3d4532, cover = 0x4f5340) {
   part('plain', hex, 0, 0.95, 1.0, 2.4, 0.25, 4.3); part('plain', cover, 0, 1.2, 1.0, 2.3, 1.6, 4.2);
 }
 const TREES = ['pine_1', 'pine_2'];
+const LOD_CELL = 16, lodKey = (x, z) => Math.floor((x + 200) / LOD_CELL) + '|' + Math.floor((z + 200) / LOD_CELL);
+const LOD_MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
+let LOD_GEO = null;
+function lodTree() { // ~60 triangles shaped like the pine model (7.3 m tall in model units): trunk + three foliage tiers
+  if (LOD_GEO) return LOD_GEO;
+  const col = (g, r, gr, b) => { const n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = r; a[i * 3 + 1] = gr; a[i * 3 + 2] = b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
+  const parts = [col(new THREE.CylinderGeometry(0.1, 0.24, 4.2, 5, 1, true).translate(0, 2.1, 0), 0.2, 0.12, 0.08)];
+  [[2.35, 2.6, 2.2], [1.8, 2.5, 3.8], [1.15, 2.4, 5.3]].forEach(([rad, h, y], i) => parts.push(col(new THREE.ConeGeometry(rad, h, 7, 1, true).rotateY(i * 0.5).translate(0, y + h / 2 - 0.6, 0), 0.085, 0.15, 0.07)));
+  LOD_GEO = mergeGeometries(parts.map((g) => { const t = g.toNonIndexed(); t.deleteAttribute('uv'); return t; }));
+  return LOD_GEO;
+}
+// swap tree cells between the full model and the stand-in by distance (called every few frames)
+export function updateLOD(W, cam) {
+  const d = W.lodDist || 34;
+  for (const k in W.lod) { const c = W.lod[k], dist = Math.hypot(c.x - cam.x, c.z - cam.z), near = dist < (c.near ? d + 3 : d - 3); if (near === c.near && c.init) continue; c.near = near; c.init = true; for (const m of c.full) m.visible = near; if (c.lod) c.lod.visible = !near; }
+}
 function tree(B, x, z, col = true) {
   const r = B.rng, h = 7 + r() * 5, tr = 0.2 + r() * 0.16;
   if (A.parts.pine_1) {
-    const k = col ? TREES[Math.floor(r() * TREES.length)] : 'pine_2', s = 1.25 + r() * 0.55;
-    B.prop(k, x, -0.1, z, r() * 6.283, s, { shadow: col, tint: [0x7c8c80, 0x6e7e74, 0x647268][Math.floor(r() * 3)] });
+    const k = col ? TREES[Math.floor(r() * TREES.length)] : 'pine_2', s = 1.25 + r() * 0.55, ry = r() * 6.283, tint = [0x7c8c80, 0x6e7e74, 0x647268][Math.floor(r() * 3)];
+    // interior trees: full model near the camera, low-poly stand-in beyond W.lodDist; the tree line outside the map is always low-poly
+    if (col) B.prop(k, x, -0.1, z, ry, s, { shadow: true, tint, cell: LOD_CELL });
+    const lk = col ? lodKey(x, z) : 'border'; (B.lodInst[lk] || (B.lodInst[lk] = [])).push({ m: M(x, -0.1, z, 0, ry, 0, s, s, s), tint });
     if (col) B.canopy.push(M(x, 4.6 * s, z, 0, 0, 0, 2.3 * s, 5.2 * s, 2.3 * s)); // cheap shadow-only stand-in for the foliage
     if (col) B.collider(x - 0.3, 0, z - 0.3, x + 0.3, 6, z + 0.3);
     return;
@@ -731,7 +758,7 @@ export function buildWorld(id, scene) {
   const B = new Builder(), W = { id, dyn: [], lights: [] };
   Object.assign(W, (MAPS[id] || (id === 'forest' ? forest : warehouse))(B, W, scene));
   W.meshes = B.finish(scene);
-  W.colliders = B.col; W.nav = new Nav(B.col, W.bounds); W.cover = buildCover(B.col, W.nav);
+  W.colliders = B.col; W.nav = new Nav(B.col, W.bounds); W.cover = buildCover(B.col, W.nav); W.lod = B.lod;
   const e = W.env;
   scene.fog = new THREE.FogExp2(e.fog[0], e.fog[1]); scene.background = new THREE.Color(e.bg);
   W.hemi = new THREE.HemisphereLight(e.hemi[0], e.hemi[1], e.hemi[2]); scene.add(W.hemi);

@@ -342,7 +342,7 @@ export class Enemy {
       return;
     }
     // perception
-    if ((this.percT -= dt) <= 0) { this.percT = 0.1 + Math.random() * 0.05; this.los = this.canSee(); }
+    if ((this.percT -= dt) <= 0) { this.percT = 0.1 + Math.random() * 0.05; this.los = this.canSee(); ch.setShadow(this.pd < 34); } // far soldiers skip the shadow pass
     const dxp = P.pos.x - this.pos.x, dzp = P.pos.z - this.pos.z; this.pd = Math.hypot(dxp, dzp);
     if (this.los) {
       let rate = pr.detect * G.world.env.detect * (2.2 * (1 - this.pd / G.world.env.viewRange) + 0.25);
