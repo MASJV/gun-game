@@ -87,6 +87,9 @@ h1 span{color:var(--g)}
 #scope{position:fixed;inset:0;display:none;background:radial-gradient(circle at center,transparent 0,transparent 32vh,#000 32.6vh)}
 #scope:before,#scope:after{content:"";position:absolute;background:rgba(0,0,0,.85)}
 #scope:before{left:0;right:0;top:50%;height:1px}#scope:after{top:0;bottom:0;left:50%;width:1px}
+#scope u{position:absolute;background:#000}#scope .l{left:calc(50% - 32vh);width:22vh;top:calc(50% - 1.5px);height:3px}#scope .r{left:calc(50% + 10vh);width:22vh;top:calc(50% - 1.5px);height:3px}#scope .b{top:calc(50% + 10vh);height:22vh;left:calc(50% - 1.5px);width:3px}
+#scope .m{left:calc(50% - 8vh);width:16vh;top:calc(50% - 3px);height:7px;background:repeating-linear-gradient(90deg,rgba(0,0,0,.9) 0 1px,transparent 1px 2vh)}
+#zoomv{position:absolute;left:calc(50% + 12vh);top:calc(50% + 12vh);color:#e8f0ea;font-size:15px;letter-spacing:.12em;text-shadow:0 0 3px #000}#zoomv i{font-style:normal;font-size:9.5px;color:var(--a);letter-spacing:.2em;margin-left:8px}
 #hitm{position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px;opacity:0;background:linear-gradient(45deg,transparent 45%,#fff 45% 55%,transparent 55%),linear-gradient(-45deg,transparent 45%,#fff 45% 55%,transparent 55%);-webkit-mask:radial-gradient(circle,transparent 4px,#000 5px);mask:radial-gradient(circle,transparent 4px,#000 5px)}
 #hitm.h{background:linear-gradient(45deg,transparent 43%,#ffd060 43% 57%,transparent 57%),linear-gradient(-45deg,transparent 43%,#ffd060 43% 57%,transparent 57%)}
 #hitm.k{background:linear-gradient(45deg,transparent 43%,#ff5a4a 43% 57%,transparent 57%),linear-gradient(-45deg,transparent 43%,#ff5a4a 43% 57%,transparent 57%)}
@@ -117,7 +120,7 @@ h1 span{color:var(--g)}
 <body>
 <canvas id="c"></canvas>
 <div id="nv"><div class="t"></div><div class="n" id="nvn"></div><div class="v"></div></div>
-<div id="scope"></div>
+<div id="scope"><u class="l"></u><u class="r"></u><u class="b"></u><u class="m"></u><div id="zoomv"></div></div>
 <div id="flashov"></div>
 
 <div id="hud">

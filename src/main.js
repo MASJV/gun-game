@@ -292,6 +292,7 @@ function updateHUD(dt) {
   for (let i = 0; i < 4; i++) { const st = $('c' + i).style; st.left = cs[i][0] + 'px'; st.top = cs[i][1] + 'px'; st.width = cs[i][2] + 'px'; st.height = cs[i][3] + 'px'; st.opacity = op; }
   setStyle('ret', 'display', ret === 'dot' || ret === 'holo' ? 'block' : 'none'); if (ret && ret !== 'scope' && hudCache.retc !== ret) { hudCache.retc = ret; $('ret').className = ret; }
   setStyle('scope', 'display', P.scoped ? 'block' : 'none');
+  if (P.scoped) setText('zoomv', `${s.zoom.toFixed(2)}&times;` + (w.optic.zoom[1] > w.optic.zoom[0] ? ' <i>WHEEL</i>' : '') + (P.steady ? ' <i>STEADY</i>' : P.breath > 1 ? ' <i>SHIFT: HOLD BREATH</i>' : ''));
   setStyle('flashov', 'opacity', Math.min(1, P.blind).toFixed(2));
   setStyle('stimv', 'opacity', P.stimT > 0 ? '1' : '0');
   if (hitT > 0) { hitT -= dt; $('hitm').style.opacity = Math.min(1, hitT * 8); } else setStyle('hitm', 'opacity', '0');
@@ -432,7 +433,10 @@ addEventListener('mousedown', (ev) => {
   if (ev.button === 0) { G.inp.lmb = true; G.inp.lmbPressed = true; } else if (ev.button === 2) G.inp.rmb = true;
 });
 addEventListener('mouseup', (ev) => { if (ev.button === 0) G.inp.lmb = false; else if (ev.button === 2) G.inp.rmb = false; });
-addEventListener('wheel', () => { if (G.state === 'playing') G.player.cycleThrow(); });
+addEventListener('wheel', (ev) => { // scoped: adjust magnification; otherwise cycle throwables. Never scroll the page.
+  if (G.state !== 'playing') return; ev.preventDefault();
+  if (!G.player.zoomStep(ev.deltaY < 0 ? 1 : -1)) G.player.cycleThrow();
+}, { passive: false });
 addEventListener('contextmenu', (ev) => ev.preventDefault());
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === canvas) { if (G.state === 'paused') { G.state = 'playing'; show(null); last = performance.now(); } }
@@ -484,7 +488,7 @@ function menuBuild() {
   const id = L[M.edit], w = WEAPONS[id], a = L.att[id];
   $('attl').textContent = 'ATTACHMENTS — ' + w.name;
   $('edit').innerHTML = optHTML('primary', 'Edit primary', '', M.edit === 'primary', 'sm') + optHTML('secondary', 'Edit secondary', '', M.edit === 'secondary', 'sm');
-  $('optic').innerHTML = w.optics.map((o) => optHTML(o, OPTICS[o].name, o === 'scope' ? '4x zoom, slower to aim' : o === 'iron' ? 'no zoom' : o === 'reddot' ? 'clean dot' : 'ring reticle', a.optic === o, 'sm')).join('');
+  $('optic').innerHTML = w.optics.map((o) => optHTML(o, OPTICS[o].name, OPTICS[o].desc || (o === 'iron' ? 'no zoom' : o === 'reddot' ? '1x, clean dot' : '1x, ring reticle'), a.optic === o, 'sm')).join('');
   $('atts').innerHTML = [['muzzle', 'Suppressor', 'quiet: guards hear it only at close range'], ['grip', 'Foregrip', '-20% recoil, steadier hip fire'], ['laser', 'Laser sight', 'tighter hip fire (L toggles)']].map(([k, n, d]) => optHTML(k, n, d, a[k], w[k] ? '' : 'off')).join('');
   const st = statsFor(id, a), bar = (n, v) => `<span>${n}</span><i><b style="width:${Math.round(Math.max(4, Math.min(100, v)))}%"></b></i>`;
   $('bars').innerHTML = bar('DAMAGE', (st.dmg * (st.pellets || 1)) / 1.2) + bar('FIRE RATE', st.rpm / 9) + bar('CONTROL', 100 - st.recoil * 20) + bar('HANDLING', 100 - st.adsT * 230) + bar('STEALTH', 100 - st.noise * 1.9);

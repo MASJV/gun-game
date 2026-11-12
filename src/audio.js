@@ -35,8 +35,9 @@ export class Audio {
     if (sup) { this.noise(0.09, { f: 1700, f2: 500, q: 1.2, type: 'bandpass', vol: kind === 'dmr' ? 0.5 : 0.36 }); this.tone(170, 0.05, { f2: 70, vol: 0.2, type: 'triangle' }); this.click(0.22); return; }
     if (kind === 'ak') { this.noise(0.26, { f: 2600, f2: 300, vol: 1.0 }); this.tone(130, 0.2, { f2: 38, vol: 0.9, type: 'triangle' }); this.noise(0.05, { f: 5000, type: 'highpass', vol: 0.35 }); }
     else if (kind === 'm4') { this.noise(0.17, { f: 4200, f2: 600, vol: 0.8 }); this.tone(190, 0.12, { f2: 60, vol: 0.55, type: 'triangle' }); this.noise(0.04, { f: 6500, type: 'highpass', vol: 0.4 }); }
+    else if (kind === 'sniper') { this.noise(0.55, { f: 1800, f2: 120, vol: 1.3 }); this.tone(80, 0.45, { f2: 24, vol: 1.2, type: 'triangle' }); this.noise(0.07, { f: 4000, type: 'highpass', vol: 0.45 }); this.noise(1.1, { f: 420, f2: 90, vol: 0.28, at: 0.1 }); }
     else if (kind === 'dmr') { this.noise(0.4, { f: 2200, f2: 180, vol: 1.1 }); this.tone(95, 0.32, { f2: 30, vol: 1, type: 'triangle' }); this.noise(0.06, { f: 4500, type: 'highpass', vol: 0.4 }); this.noise(0.7, { f: 500, f2: 120, vol: 0.2, at: 0.08 }); }
-    else if (kind === 'shotgun') { this.noise(0.36, { f: 1500, f2: 160, vol: 1.2 }); this.tone(85, 0.3, { f2: 28, vol: 1.1, type: 'triangle' }); this.click(0.5, 0.33); this.click(0.55, 0.47); }
+    else if (kind === 'shotgun') { this.noise(0.36, { f: 1500, f2: 160, vol: 1.2 }); this.tone(85, 0.3, { f2: 28, vol: 1.1, type: 'triangle' }); }
     else if (kind === 'smg') { this.noise(0.1, { f: 3800, f2: 900, vol: 0.6 }); this.tone(240, 0.07, { f2: 100, vol: 0.4, type: 'triangle' }); }
     else { this.noise(0.11, { f: 3400, f2: 700, vol: 0.7 }); this.tone(260, 0.09, { f2: 90, vol: 0.5, type: 'square' }); }
   }
@@ -44,8 +45,15 @@ export class Audio {
     const v = Math.max(0.05, 0.75 / (1 + dist * 0.07));
     this.noise(0.22, { f: Math.max(500, 2600 - dist * 35), f2: 250, vol: v, pan }); this.tone(120, 0.16, { f2: 45, vol: v * 0.7, pan, type: 'triangle' });
   }
-  reload(dur, shells) {
-    if (shells) { this.click(0.5, dur * 0.7); return; } this.click(0.5); this.noise(0.05, { f: 1800, type: 'bandpass', q: 3, vol: 0.4, at: dur * 0.45 }); this.click(0.6, dur * 0.8); this.click(0.7, dur * 0.92); }
+  // staged reload: magazine out, magazine in (at the moment the ammunition changes), action racked
+  reload(dur, kind = 'rifle', ins = 0.6) {
+    if (kind === 'shell') { this.noise(0.05, { f: 1500, type: 'bandpass', q: 3, vol: 0.4, at: dur * ins }); this.tone(520, 0.03, { vol: 0.08, type: 'square', at: dur * ins }); return; }
+    this.noise(0.05, { f: kind === 'pistol' ? 2600 : 1700, type: 'bandpass', q: 4, vol: 0.4, at: dur * ins * 0.32 }); this.tone(300, 0.04, { f2: 150, vol: 0.12, at: dur * ins * 0.34 });
+    this.noise(0.06, { f: kind === 'pistol' ? 2200 : 1300, type: 'bandpass', q: 3, vol: 0.55, at: dur * ins }); this.tone(190, 0.05, { f2: 90, vol: 0.2, type: 'triangle', at: dur * ins });
+    const r = dur * Math.min(0.97, ins + (kind === 'pistol' ? 0.28 : 0.3)); this.click(0.6, r); this.noise(0.07, { f: 3000, f2: 1200, type: 'bandpass', q: 2, vol: 0.4, at: r + 0.07 });
+  }
+  bolt() { this.click(0.5, 0.28); this.noise(0.08, { f: 2400, f2: 900, type: 'bandpass', q: 2, vol: 0.35, at: 0.36 }); this.noise(0.08, { f: 900, f2: 2600, type: 'bandpass', q: 2, vol: 0.35, at: 0.78 }); this.click(0.6, 0.92); }
+  pump(at = 0) { this.noise(0.07, { f: 1100, f2: 500, type: 'bandpass', q: 2, vol: 0.5, at }); this.noise(0.07, { f: 600, f2: 1300, type: 'bandpass', q: 2, vol: 0.5, at: at + 0.16 }); }
   thud(v = 0.5) { this.noise(0.05, { f: 900, f2: 300, type: 'bandpass', q: 1.5, vol: 0.16 * v }); }
   swish() { this.noise(0.16, { f: 900, f2: 3200, type: 'bandpass', q: 2, vol: 0.3 }); }
   stab(kill) { this.noise(0.12, { f: 500, f2: 150, vol: 0.6 }); this.tone(kill ? 110 : 180, 0.12, { f2: 60, vol: 0.4 }); }

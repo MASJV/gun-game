@@ -25,7 +25,15 @@ Read this first when resuming, then `git log --oneline`. V2 background: `docs/V2
       * Security hooks in `squad.js`: `commsDown` (no radio reports, no reinforcements), `panelDown` (no alarm / lockdown),
         `discover()` (a guard is sent to check a sabotaged system), power-off dims lights and shortens guard sight.
       * `G.sel.layout = 'classic'` (tests only) keeps the fixed V2 layout. Pre-mission briefing overlay (`#briefov`).
-- [ ] Phase 3 — sniper rifle, variable zoom, reload overhaul
+- [x] Phase 3 — weapons and optics:
+      * `sniper` (L96, bolt action, 5 rounds, `bolt` cycle time gates the next shot) from Quaternius SniperRifle_3 (CC0).
+      * Optics: `scope` = fixed 4x, `vscope` = 4-10x; `Player.zoomStep()` on the mouse wheel in 0.25x steps while aiming
+        (wheel otherwise cycles throwables; the listener is non-passive and prevents page scroll). `Player.adsFov()` uses
+        fov = 2*atan(tan(hipFov/2)/zoom); sensitivity scales with the same ratio. Scope sway grows with zoom and movement,
+        Shift holds breath (`breath`, `steady`). Scope overlay shows the magnification (`#zoomv`).
+      * Reloads are staged per category (`rk`: rifle / pistol / shell / bolt): ammunition changes at fraction `ins` of the
+        animation (`relIn`), never before; switching away earlier changes nothing. Left hand travels to the magazine well
+        with a magazine / shell prop (`view.magProxy`, `magWell`, `lhRest`); shotgun loads per shell and pumps.
 - [ ] Phase 4 — AI refinement
 - [ ] Phase 5 — training range, performance, polish, release to main
 

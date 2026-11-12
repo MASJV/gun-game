@@ -29,7 +29,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       if (G.state === 'playing') press('Escape');
       if (G.state === 'paused') document.getElementById('pmenu').click(); else if (G.state !== 'menu') document.getElementById('emenu').click();
       G.sel.map = map; G.sel.ai = ai; G.sel.layout = load.mission ? null : 'classic'; G.sel.mission = load.mission || 'intel'; G.sel.length = load.length || 'quick'; G.sel.seed = load.seed ?? null; const L = G.loadout; L.primary = load.primary || 'm4'; L.secondary = load.secondary || 'pistol'; L.kit = load.kit || 'assault';
-      for (const id in L.att) Object.assign(L.att[id], { optic: id === 'dmr' ? 'scope' : 'iron', muzzle: false, grip: false, laser: false }, (load.att || {})[id] || {});
+      for (const id in L.att) Object.assign(L.att[id], { optic: id === 'dmr' ? 'scope' : id === 'sniper' ? 'vscope' : 'iron', muzzle: false, grip: false, laser: false }, (load.att || {})[id] || {});
       document.getElementById('start').click();
     }, [map, ai, load]);
   };
@@ -84,9 +84,45 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       const exp = { ak: [5, 6], m4: [6, 8], dmr: [1, 1], pistol: [1, 1], smg: [7, 9], shotgun: [1, 1] };
       check(`weapons: ${prim} fires at its own cadence, recoils, reloads`, o.fired1 >= exp[prim][0] && o.fired1 <= exp[prim][1] && o.recoil && o.reloading && o.mag1 === { ak: 30, m4: 30, dmr: 10 }[prim], o);
       check(`weapons: ${sec} fires, reloads, switching and knife slot work`, o.cur === 1 && o.fired2 >= exp[sec][0] && o.fired2 <= exp[sec][1] && o.mag2 === { pistol: 15, smg: 30, shotgun: 6 }[sec] && o.knife === 'knife', [o.fired2, o.mag2, o.knife]);
-      check(`weapons: ${prim} ADS zoom matches optic`, o.ads === 1 && o.fov === { ak: 55, m4: 58, dmr: 19 }[prim] && o.scoped === (prim === 'dmr'), [o.fov, o.scoped]);
+      check(`weapons: ${prim} ADS zoom matches optic`, o.ads === 1 && o.fov === { ak: 55, m4: 58, dmr: 22 }[prim] && o.scoped === (prim === 'dmr'), [o.fov, o.scoped]);
       if (prim === 'm4') check('attachments: suppressor cuts the noise radius', o.noise < 15, o.noise);
     }
+  });
+
+  await run('sniper', async () => {
+    await start('warehouse', 'tactical', { primary: 'sniper', secondary: 'shotgun' });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}; const e = solo(0); calm(); const s = P.slots[0];
+      const put = (x, z) => { e.release(); e.pos.set(x, 0, z); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.hp = 100; e.dead = false; e.sync(); e.ch.refresh(); };
+      const wheel = (dy) => { const ev = new WheelEvent('wheel', { deltaY: dy, cancelable: true }); window.dispatchEvent(ev); return ev.defaultPrevented; };
+      P.pos.set(40, 0, 12); P.yaw = 0; P.pitch = 0; put(40, -4); sim(0.4);
+      o.id = s.id; o.mag = s.st.mag; o.zoom0 = s.zoom; const thr0 = P.throwSel;
+      o.hipWheel = [wheel(-100), s.zoom]; // not aiming: the wheel must not zoom
+      G.inp.rmb = true; sim(0.8); o.scoped = P.scoped; o.scopeShown = getComputedStyle(document.getElementById('scope')).display;
+      const fovAt = () => +G.camera.fov.toFixed(2), want = (z) => +((2 * Math.atan(Math.tan((G.fov * Math.PI) / 360) / z) * 180) / Math.PI).toFixed(2);
+      o.fov4 = [fovAt(), want(4)]; const steps = []; for (let i = 0; i < 4; i++) { o.prevented = wheel(-100); steps.push(s.zoom); } o.steps = steps; sim(0.2); o.fov5 = [fovAt(), want(5)];
+      for (let i = 0; i < 40; i++) wheel(-100); o.max = s.zoom; sim(0.2); o.fov10 = [fovAt(), want(10)]; o.hud = document.getElementById('zoomv').textContent;
+      // sensitivity scales with magnification
+      const y0 = P.yaw; G.inp.mx = 100; sim(0.02); const dz = Math.abs(P.yaw - y0); o.sensRatio = +(dz / (100 * 0.0022 * G.sens)).toFixed(3);
+      for (let i = 0; i < 60; i++) wheel(100); o.min = s.zoom;
+      // scoped shot: lethal to the body with a clear line, bolt blocks the next round, wall still stops it
+      P.yaw = 0; P.pitch = Math.atan2(1.15 - 1.62, 16); P.swT2 = 0; sim(0.05); G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; o.kill = e.dead; o.magAfter = s.mag; o.bolt = P.boltT > 0.8;
+      G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.3); G.inp.lmb = false; o.blockedByBolt = s.mag === o.magAfter; sim(1.2);
+      put(19, 0); P.pos.set(26, 0, 0); P.yaw = Math.PI / 2; P.pitch = Math.atan2(1.15 - 1.62, 7); sim(0.3); G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(0.2); o.wall = 100 - e.hp; G.inp.rmb = false; sim(0.5);
+      // staged reload: nothing changes before the magazine goes in; switching away before that leaves the weapon as it was
+      const tot0 = s.mag + s.reserve, m0 = s.mag; P.reload(); sim(s.st.reload * 0.4); o.early = [s.mag === m0, s.reserve + s.mag === tot0]; press('Digit2'); sim(0.8); press('Digit1'); sim(0.8); o.cancel = [s.mag === m0, s.mag + s.reserve === tot0];
+      P.reload(); sim(s.st.reload * (s.st.ins + 0.05)); o.inserted = s.mag === 5; sim(2); o.done = [!P.reloading, s.mag, s.mag + s.reserve === tot0];
+      // shotgun: one shell at a time, firing interrupts after a shell is in
+      press('Digit2'); sim(0.8); const g = P.slots[1]; g.mag = 1; const r0 = g.reserve; P.reload(); sim(0.5); o.shell1 = g.mag; sim(0.3); o.shell2 = g.mag; sim(0.5); const m2 = g.mag; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.1); G.inp.lmb = false; const stopped = !P.reloading, m3 = g.mag; sim(0.6); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.1); G.inp.lmb = false;
+      o.interrupt = [m2, stopped, g.mag === m3 - 1]; o.conserve = g.mag + g.reserve + 1 === 1 + r0;
+      return o;
+    });
+    check('sniper: bolt-action primary with 5 rounds; one scoped body hit is lethal; the bolt gates the next shot', o.id === 'sniper' && o.mag === 5 && o.kill && o.magAfter === 4 && o.bolt && o.blockedByBolt, [o.kill, o.magAfter, o.bolt, o.blockedByBolt]);
+    check('optics: wheel zooms only while aiming, in 0.25x steps, clamped to 4-10x', o.hipWheel[1] === 4 && o.steps.join() === '4.25,4.5,4.75,5' && o.max === 10 && o.min === 4 && o.prevented === true, [o.hipWheel, o.steps, o.min, o.max, o.prevented]);
+    check('optics: camera FOV follows true magnification and the scope HUD shows it', Math.abs(o.fov4[0] - o.fov4[1]) < 0.3 && Math.abs(o.fov5[0] - o.fov5[1]) < 0.3 && Math.abs(o.fov10[0] - o.fov10[1]) < 0.3 && o.scoped && o.scopeShown === 'block' && /10\.00/.test(o.hud), [o.fov4, o.fov5, o.fov10, o.hud]);
+    check('optics: mouse sensitivity is reduced in proportion to zoom; scoped rounds still stop at walls', o.sensRatio < 0.15 && o.wall === 0, [o.sensRatio, o.wall]);
+    check('reload: ammunition changes at the insert stage, cancelling earlier changes nothing, totals are conserved', o.early[0] && o.early[1] && o.cancel[0] && o.cancel[1] && o.inserted && o.done[0] && o.done[1] === 5 && o.done[2], [o.early, o.cancel, o.inserted, o.done]);
+    check('reload: shotgun loads shell by shell and can be interrupted by firing', o.shell1 === 2 && o.shell2 === 2 && o.interrupt[0] >= 3 && o.interrupt[1] && o.interrupt[2] && o.conserve, [o.shell1, o.shell2, o.interrupt, o.conserve]);
   });
 
   await run('combat', async () => {
