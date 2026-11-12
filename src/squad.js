@@ -37,6 +37,20 @@ export class Security {
     if (first && this.g.world.panel) this.alarmAt = Math.random() < this.pr.alarmChance ? this.t + rr(this.pr.alarmDelay) : Infinity;
   }
   suspicious() { this.raise(1, ''); }
+  // capture missions: the protection detail goes with the target when he relocates
+  relocateDetail(anchor) {
+    const posts = anchor.posts; let i = 0;
+    for (const e of this.g.enemies) if (!e.dead && e.duty === 'objective') { const p = posts[i++ % posts.length]; e.home = p; e.setOrder({ type: 'defend', x: p[0], z: p[1], tx: e.pos.x, tz: e.pos.z }); if (e.order && e.state !== 'COVER' && !e.engaged()) e.doOrder(); }
+  }
+  // escort phase: the site knows someone is being taken out, not by which way - every exit gets a guard
+  sealExits() {
+    const G = this.g, used = new Set(), o = G.world.objective.pos;
+    for (const x of G.world.exits) {
+      const c = G.enemies.filter((e) => !e.dead && !used.has(e) && !e.engaged() && e.stun <= 0 && e.state !== 'ALARM').sort((a, b) => Math.hypot(a.pos.x - x.pos[0], a.pos.z - x.pos[2]) - Math.hypot(b.pos.x - x.pos[0], b.pos.z - x.pos[2]))[0];
+      if (!c) break; used.add(c); c.duty = 'post'; c.alerted = true; c.setOrder({ type: 'defend', x: x.pos[0], z: x.pos[2], tx: o[0], tz: o[2], name: x.name }); if (c.order && !c.engaged()) c.doOrder();
+    }
+    return used.size;
+  }
   // a sabotaged / emptied objective is eventually noticed: the nearest free guard is sent to look at it
   discover(anchor) {
     const G = this.g, c = G.enemies.filter((e) => !e.dead && !e.engaged() && e.stun <= 0 && e.state !== 'ALARM').sort((a, b) => Math.hypot(a.pos.x - anchor.at[0], a.pos.z - anchor.at[2]) - Math.hypot(b.pos.x - anchor.at[0], b.pos.z - anchor.at[2]))[0];

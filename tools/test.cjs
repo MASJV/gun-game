@@ -163,24 +163,24 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       put(-11.6, -6); P.pos.set(-5, 0, -6); o.truck = shootAt(0, 2);
       put(-2, -22.3); P.pos.set(-2, 0, -17); o.crate = shootAt(1, 1);
       // 4. control: same weapons with a clear line do damage
-      put(0, 20); P.pos.set(0, 0, 28); o.clearRifle = shootAt(0, 1) > 0; e.hp = 100; P.pos.set(0, 0, 24); o.clearShotgun = shootAt(1, 1) > 0;
+      put(0, 20); e.hp = 5000; P.pos.set(0, 0, 25); o.clearRifle = 5000 - e.hp > 0; shootAt(0, 3); o.clearRifle = e.hp < 5000; { const r = G.trace(G.camera.position, P.fwd, 60, 'player'); o.dbg = [r.kind, +r.d.toFixed(2), r.wh ? [r.wh.x0, r.wh.x1, r.wh.y0, r.wh.y1, r.wh.z0, r.wh.z1].map((v) => +v.toFixed(1)) : null, P.cur, P.slot.mag, +P.boltT.toFixed(2), P.reloading, e.hp, e.dead]; } e.hp = 5000; P.pos.set(0, 0, 23.5); shootAt(1, 2); o.clearShotgun = e.hp < 5000; e.hp = 100;
       // 5. muzzle obstruction: the camera sees past a corner but the muzzle is behind it -> the round hits the corner
       put(0, 20); e.hp = 100; P.pos.set(0, 0, 28); press('Digit1'); sim(0.7); P.yaw = 0; P.pitch = -0.065; sim(0.3);
       const m = P.muzzleW, col = { x0: m.x - 0.06, x1: m.x + 0.5, y0: 0, y1: 3, z0: m.z - 0.5, z1: m.z + 0.12, solid: false, sight: false, bullet: true }; G.world.colliders.push(col);
       const camClear = !G.trace(G.camera.position, P.fwd, 30, 'player').wh; P.slot.mag = 5; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(0.5);
       o.muzzleBlocked = { camClear, dmg: 100 - e.hp }; G.world.colliders.splice(G.world.colliders.indexOf(col), 1);
       // 6. enemy rounds obey the same resolver: wall, fence
-      const fireAt = () => { e.seeing = true; e.seeBody = true; e.los = true; e.pd = Math.hypot(P.pos.x - e.pos.x, P.pos.z - e.pos.z); e.yaw = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.sync(); e.ch.aimW = 1; for (let i = 0; i < 20; i++) e.ch.update(1 / 60, { speed: 0, aim: true }); let fired = 0; for (let i = 0; i < 12; i++) { e.ammo = 30; if (e.fire(false)) fired++; } return fired; };
+      const fireAt = () => { e.seeing = true; e.seeBody = true; e.los = true; e.pd = Math.hypot(P.pos.x - e.pos.x, P.pos.z - e.pos.z); e.yaw = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.sync(); e.ch.aimW = 1; for (let i = 0; i < 20; i++) e.ch.update(1 / 60, { speed: 0, aim: true }); let fired = 0; for (let i = 0; i < 40; i++) { e.ammo = 30; e.seenT = 5; if (e.fire(false)) fired++; } return fired; };
       P.hp = 100; put(-13, -18.5); P.pos.set(-13, 0, -13); o.enemyWall = [fireAt(), 100 - P.hp];
       P.hp = 100; put(10, 0.5); P.pos.set(10, 0, 8); o.enemyFence = [fireAt(), 100 - P.hp];
-      P.hp = 100; put(0, 20); P.pos.set(0, 0, 28); o.enemyClear = [fireAt(), 100 - P.hp > 0];
+      P.hp = 1e5; put(0, 20); P.pos.set(0, 0, 25.5); o.enemyClear = [fireAt(), 1e5 - P.hp > 0];
       // direct resolver calls straight through geometry never reach the far side
       const d = new V(0, 0, -1); o.resolver = ['player', e].map((sh) => { const r = G.trace(new V(-13, 1.2, -13), d, 30, sh); return r.kind; });
       return o;
     });
     check('ballistics: chain-link fence is see-through but stops rifle and shotgun rounds', o.seeThroughFence && o.fenceRifle === 0 && o.fenceShotgun === 0, [o.seeThroughFence, o.fenceRifle, o.fenceShotgun]);
     check('ballistics: walls, vehicles and crates stop rounds (also when scoped)', o.wall === 0 && o.scopedWall === 0 && o.truck === 0 && o.crate === 0, [o.wall, o.scopedWall, o.truck, o.crate]);
-    check('ballistics: the same weapons hit with a clear line of fire', o.clearRifle && o.clearShotgun);
+    check('ballistics: the same weapons hit with a clear line of fire', o.clearRifle && o.clearShotgun, [o.clearRifle, o.clearShotgun, o.dbg]);
     check('ballistics: an obstructed muzzle cannot shoot past cover the camera sees over', o.muzzleBlocked.camClear && o.muzzleBlocked.dmg === 0, o.muzzleBlocked);
     check('ballistics: enemy fire is refused / stopped by walls and fences, lands when clear', o.enemyWall[0] === 0 && o.enemyWall[1] === 0 && o.enemyFence[0] === 0 && o.enemyFence[1] === 0 && o.enemyClear[0] > 0 && o.enemyClear[1], [o.enemyWall, o.enemyFence, o.enemyClear]);
     check('ballistics: resolver stops at the wall for both player and enemy shooters', o.resolver.every((k) => k === 'world'), o.resolver);
@@ -192,7 +192,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       const G = window.__SP, P = G.player, o = {}; calm(); const [a, b2, c] = G.enemies; G.enemies.slice(3).forEach((e) => { e.dead = true; e.found = true; e.ch.root.visible = false; });
       const hold = (e, x, z) => { e.pos.set(x, 0, z); e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.yaw = e.baseYaw = Math.PI; e.sync(); e.ch.refresh(); };
       // frag: a is in the open 3 m from the blast, b is behind a shipping container
-      hold(a, 30, -15); hold(b2, 39, -15); hold(c, 40, 20); P.pos.set(30, 0, 14); P.hp = 100;
+      hold(a, 30, -15); a.stun = 6; hold(b2, 39, -15); hold(c, 40, 20); // a is pinned: guards who can move now run from grenades P.pos.set(30, 0, 14); P.hp = 100;
       G.spawnGrenade('frag', new G.v1.constructor(33, 0.2, -15), new G.v1.constructor(0, 0, 0), 'player'); sim(3.2);
       o.fragOpen = a.dead || a.hp < 40; o.fragCovered = b2.hp; o.secAfterBlast = G.sec.level;
       // flash: c faces the flash and is stunned
@@ -294,6 +294,24 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('elite: grenade only at a stale position, not near allies, lands near the last seen spot', o.blockedByAlly && o.blockedFresh && o.thrown && o.landErr >= 0 && o.landErr < 4.5, [o.blockedByAlly, o.blockedFresh, o.thrown, o.landErr]);
     check('elite: grenades are limited (stock and shared cooldown)', o.nadesLeft === 0 && o.cooldown, [o.nadesLeft, o.cooldown]);
     check('elite: bounding — may move while covered, must wait when nobody covers', o.mayMoveCovered === true && o.mayMoveAlone === false, [o.mayMoveCovered, o.mayMoveAlone]);
+  });
+
+  await run('refine', async () => {
+    await start('warehouse', 'tactical');
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}, V = G.v1.constructor; calm(); P.pos.set(44, 0, 28); P.hp = 1e6;
+      const [a, b2] = G.enemies; G.enemies.slice(2).forEach((e) => { e.dead = true; e.found = true; });
+      [a, b2].forEach((e, i) => { e.release(); e.pos.set(30 + i * 2, 0, -15); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.sync(); e.ch.refresh(); });
+      G.spawnGrenade('frag', new V(31, 1.2, -14.5), new V(0, 0, 0), 'player'); let moved = 0; sim(2.6, () => { if (a.state === 'MOVE' || b2.state === 'MOVE') moved++; });
+      o.evadeFrames = moved; sim(1); o.dist = [a, b2].map((e) => +Math.hypot(e.pos.x - 31, e.pos.z + 14.5).toFixed(1)); o.alive = [a, b2].filter((e) => !e.dead).length;
+      // a guard in cover with a stale contact does not stay tucked forever
+      const e = a.dead ? b2 : a; e.percT = 1e9; e.hasLkp = true; e.lkpAge = 1; e.holdPost = false;
+      e.release(); e.pos.set(8, 0, -15.5); e.sync(); e.lkp.set(-3, 0, 2); const ok = e.takeCover('hold'); let t = 0, left = -1; sim(40, () => { t += 1 / 60; e.lkpAge = Math.min(e.lkpAge, 6); if (left < 0 && e.state === 'COVER' && e.phase === 'hide') left = -2; if (left === -2 && (e.state !== 'COVER' || e.phase !== 'hide')) left = t; return left < 0; });
+      o.cover = ok; o.leftHideAfter = +left.toFixed(1);
+      return o;
+    });
+    check('ai: guards scatter from a grenade that lands next to them', o.evadeFrames > 30 && o.dist.some((d) => d > 6), o);
+    check('ai: a guard does not stay hidden indefinitely', o.cover && o.leftHideAfter > 0 && o.leftHideAfter < 25, [o.cover, o.leftHideAfter]);
   });
 
   await run('traversal', async () => {
@@ -405,6 +423,17 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     await start('forest', 'recruit', { mission: 'rescue', length: 'quick', seed: 9 });
     const hs = await p.evaluate(() => { const G = window.__SP, c = G.mission.civ, o = { kind: c.kind, start: c.state }; const guards = G.enemies.filter((e) => e.duty === 'objective' && Math.hypot(e.pos.x - c.pos.x, e.pos.z - c.pos.z) < 16).length; o.guards = guards; c.damage(500); sim(0.2); o.state = G.state; o.sub = document.getElementById('ends').textContent; return o; });
     check('rescue: the hostage is guarded from the start and must survive', hs.kind === 'hostage' && hs.start === 'held' && hs.guards >= 2 && hs.state === 'dead' && /HOSTAGE WAS KILLED/.test(hs.sub), hs);
+    // mission-aware security: the detail follows a relocating HVT; exits are sealed during the escort
+    await start('warehouse', 'tactical', { mission: 'capture', length: 'quick', seed: 21 });
+    const ms = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, c = G.mission.civ, o = {}; calm(); P.pos.set(G.mission.def.entry.x, 0, G.mission.def.entry.z); P.hp = 1e6;
+      const fb = G.mission.def.fallback; G.sec.level = 2; G.enemies.forEach((e) => { e.alerted = true; }); sim(45, () => c.state !== 'cower');
+      o.detailNearNewSpot = G.enemies.filter((e) => !e.dead && e.duty === 'objective' && Math.hypot(e.pos.x - fb.at[0], e.pos.z - fb.at[2]) < 16).length; o.civ = c.state;
+      P.pos.set(c.pos.x + 1.4, c.pos.y, c.pos.z); sim(0.6); key('KeyE', true); sim(2); key('KeyE', false); o.follow = c.state; sim(25);
+      o.exitGuards = G.world.exits.filter((x) => G.enemies.some((e) => !e.dead && Math.hypot(e.pos.x - x.pos[0], e.pos.z - x.pos[2]) < 12)).length; o.exits = G.world.exits.length;
+      return o;
+    });
+    check('security: the protection detail relocates with the HVT and exits are sealed during the escort', ms.civ === 'cower' && ms.detailNearNewSpot >= 2 && ms.follow === 'follow' && ms.exitGuards >= 2, ms);
     // sabotage changes how security works
     await start('warehouse', 'tactical', { mission: 'sabotage', length: 'extended', seed: 3 });
     const sb = await p.evaluate(() => {

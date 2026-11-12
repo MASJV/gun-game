@@ -153,6 +153,7 @@ export class Mission {
   finish(s) {
     const G = this.g, sec = G.sec, a = s.anchors[0], last = this.i === this.def.stages.length - 1;
     s.done = true; this.i++; this.hold = 0; G.audio.objective(); G.toast(s.done2 || STAGE[s.kind].done, 4);
+    if (s.civ && !sec.commsDown) this.timers.push({ t: 4, fn: () => { if (sec.sealExits()) G.say(G.enemies.find((e) => !e.dead) || { pos: G.player.pos }, 'Seal the exits! Nobody leaves!'); } });
     if (s.kind === 'keycard') this.hasKey = true;
     else if (s.kind === 'sab:comms') sec.commsDown = true;
     else if (s.kind === 'sab:security') sec.panelDown = true;

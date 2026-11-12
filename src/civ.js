@@ -19,7 +19,7 @@ export class Civ {
   alarm() { // the HVT bolts for his fallback position once, when the site is alerted or he is threatened
     if (this.kind !== 'hvt' || this.state !== 'idle' || !this.fallback) return;
     const f = this.fallback.stand; this.path = this.g.world.nav.path(this.pos.x, this.pos.z, f[0], f[1]); this.pi = 0;
-    if (this.path) { this.state = 'flee'; this.moved = true; }
+    if (this.path) { this.state = 'flee'; this.moved = true; this.g.sec.relocateDetail(this.fallback); }
   }
   damage(d) { if (this.dead) return; this.hp -= d; if (this.hp <= 0) { this.dead = true; this.ch.die(); } else if (this.kind === 'hvt' && this.state === 'idle') this.alarm(); }
   follow(dt, speed) {

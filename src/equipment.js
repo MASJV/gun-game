@@ -27,8 +27,9 @@ export class Grenades {
           const dot = v.x * h.nx + v.y * h.ny + v.z * h.nz;
           p.addScaledVector(v, Math.max(0, (h.d - 0.05) / sp)); v.x -= 1.35 * dot * h.nx; v.y -= 1.35 * dot * h.ny; v.z -= 1.35 * dot * h.nz; v.multiplyScalar(0.72);
           if (sp > 2.5) { G.audio.bounce(Math.min(0.3, sp * 0.03)); if (n.owner === 'player') G.sound(p, 7, 'step'); }
+          this.warn(n);
         } else p.addScaledVector(v, dt);
-        if (p.y < 0.05) { p.y = 0.05; if (Math.abs(v.y) > 1.5) G.audio.bounce(0.15); v.y *= -0.3; v.x *= 0.6; v.z *= 0.6; }
+        if (p.y < 0.05) { p.y = 0.05; this.warn(n); if (Math.abs(v.y) > 1.5) G.audio.bounce(0.15); v.y *= -0.3; v.x *= 0.6; v.z *= 0.6; }
         if (v.lengthSq() < 0.09 && p.y < 0.08) n.rest = true;
         n.mesh.position.copy(p); n.mesh.rotation.x += dt * sp * 2; n.mesh.rotation.z += dt * sp;
       }
@@ -38,6 +39,15 @@ export class Grenades {
       const s = this.smokes[i]; s.t -= dt;
       if ((s.puff -= dt) <= 0 && s.t > 2.5) { s.puff = 0.22; G.fx.puff(this._v.set(s.x + (Math.random() - 0.5) * 4, s.y + 0.4 + Math.random() * 2, s.z + (Math.random() - 0.5) * 4), 3.2 + Math.random() * 1.6, 3.6, 0x9aa0a4, 0.12, 0.6); }
       if (s.t <= 0) { const k = cols.indexOf(s.col); if (k >= 0) cols.splice(k, 1); this.smokes.splice(i, 1); }
+    }
+  }
+  // guards who see or hear a frag land near them shout and scatter (once per grenade)
+  warn(n) {
+    if (n.type !== 'frag' || n.warned || n.fuse < 0.35) return; n.warned = true;
+    const G = this.g, p = n.pos; let said = false;
+    for (const e of G.enemies) {
+      if (e.dead || e === n.owner || Math.hypot(e.pos.x - p.x, e.pos.z - p.z) > 7.5) continue;
+      if (e.evade(p.x, p.z) && !said) { said = true; G.say(e, 'Grenade!'); }
     }
   }
   detonate(n) {
