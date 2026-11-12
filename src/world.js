@@ -170,27 +170,88 @@ class Builder {
 }
 
 // ---------- ray vs AABB list ----------
+export const RAYSTATS = { rays: 0, boxes: 0 }; // per-frame counters for the diagnostics overlay
+// Uniform 4 m grid over the static colliders of a map. Colliders appended after the grid was built (smoke clouds,
+// training targets, test boxes) form a small "tail" that is always tested brute force, so dynamic geometry keeps
+// working. Results are identical to the brute-force test (verified in tools/test.cjs "grid").
+const GC = 4;
+export function buildGrid(cols) {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const c of cols) { x0 = Math.min(x0, c.x0); z0 = Math.min(z0, c.z0); x1 = Math.max(x1, c.x1); z1 = Math.max(z1, c.z1); }
+  x0 -= 0.5; z0 -= 0.5; x1 += 0.5; z1 += 0.5;
+  const nx = Math.ceil((x1 - x0) / GC), nz = Math.ceil((z1 - z0) / GC), lists = Array.from({ length: nx * nz }, () => []);
+  cols.forEach((c, i) => {
+    const i0 = Math.max(0, Math.floor((c.x0 - 0.01 - x0) / GC)), i1 = Math.min(nx - 1, Math.floor((c.x1 + 0.01 - x0) / GC));
+    const j0 = Math.max(0, Math.floor((c.z0 - 0.01 - z0) / GC)), j1 = Math.min(nz - 1, Math.floor((c.z1 + 0.01 - z0) / GC));
+    for (let j = j0; j <= j1; j++) for (let k = i0; k <= i1; k++) lists[j * nx + k].push(i);
+  });
+  const g = { n: cols.length, x0, z0, x1: x0 + nx * GC, z1: z0 + nz * GC, nx, nz, cells: lists.map((l) => Int32Array.from(l)), mark: new Uint32Array(cols.length), stamp: 0 };
+  Object.defineProperty(cols, 'grid', { value: g, enumerable: false, writable: true });
+  return g;
+}
+// slab test of one box; returns entry distance (or -1) and writes the hit axis into AX
+let AX = 0;
+function slab(c, ox, oy, oz, ix, iy, iz, best) {
+  let t1 = (c.x0 - ox) * ix, t2 = (c.x1 - ox) * ix, tn = t1 < t2 ? t1 : t2, tf = t1 < t2 ? t2 : t1, ax = 0;
+  t1 = (c.y0 - oy) * iy; t2 = (c.y1 - oy) * iy;
+  let a = t1 < t2 ? t1 : t2, b = t1 < t2 ? t2 : t1;
+  if (a > tn) { tn = a; ax = 1; } if (b < tf) tf = b;
+  if (tf < tn) return -1;
+  t1 = (c.z0 - oz) * iz; t2 = (c.z1 - oz) * iz;
+  a = t1 < t2 ? t1 : t2; b = t1 < t2 ? t2 : t1;
+  if (a > tn) { tn = a; ax = 2; } if (b < tf) tf = b;
+  if (tf < tn || tn < 0 || tn >= best) return -1; // tn<0: origin inside or box behind
+  AX = ax; return tn;
+}
 export function rayBoxes(cols, ox, oy, oz, dx, dy, dz, maxD, flag) {
+  RAYSTATS.rays++;
   if (dx === 0) dx = 1e-9; if (dy === 0) dy = 1e-9; if (dz === 0) dz = 1e-9;
-  const ix = 1 / dx, iy = 1 / dy, iz = 1 / dz;
-  let best = maxD, hit = null, axis = 0;
-  for (let i = 0; i < cols.length; i++) {
-    const c = cols[i];
-    if (!c[flag]) continue;
-    let t1 = (c.x0 - ox) * ix, t2 = (c.x1 - ox) * ix, tn = t1 < t2 ? t1 : t2, tf = t1 < t2 ? t2 : t1, ax = 0;
-    t1 = (c.y0 - oy) * iy; t2 = (c.y1 - oy) * iy;
-    let a = t1 < t2 ? t1 : t2, b = t1 < t2 ? t2 : t1;
-    if (a > tn) { tn = a; ax = 1; } if (b < tf) tf = b;
-    if (tf < tn) continue;
-    t1 = (c.z0 - oz) * iz; t2 = (c.z1 - oz) * iz;
-    a = t1 < t2 ? t1 : t2; b = t1 < t2 ? t2 : t1;
-    if (a > tn) { tn = a; ax = 2; } if (b < tf) tf = b;
-    if (tf < tn || tn < 0 || tn >= best) continue; // tn<0: origin inside or box behind
-    best = tn; hit = c; axis = ax;
+  const ix = 1 / dx, iy = 1 / dy, iz = 1 / dz, g = cols.grid;
+  let best = maxD, hit = null, axis = 0, start = 0, tested = 0;
+  if (g) {
+    start = g.n;
+    // clip the ray to the grid rectangle (x/z)
+    let ta = 0, tb = maxD, t1 = (g.x0 - ox) * ix, t2 = (g.x1 - ox) * ix;
+    ta = Math.max(ta, Math.min(t1, t2)); tb = Math.min(tb, Math.max(t1, t2));
+    t1 = (g.z0 - oz) * iz; t2 = (g.z1 - oz) * iz; ta = Math.max(ta, Math.min(t1, t2)); tb = Math.min(tb, Math.max(t1, t2));
+    if (ta <= tb) {
+      const mark = g.mark; if (++g.stamp > 4e9) { mark.fill(0); g.stamp = 1; }
+      const px = ox + dx * ta, pz = oz + dz * ta;
+      let cx = Math.min(g.nx - 1, Math.max(0, Math.floor((px - g.x0) / GC))), cz = Math.min(g.nz - 1, Math.max(0, Math.floor((pz - g.z0) / GC)));
+      const sx = dx > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1, ddx = Math.abs(GC * ix), ddz = Math.abs(GC * iz);
+      let tx = (g.x0 + (cx + (sx > 0 ? 1 : 0)) * GC - ox) * ix, tz = (g.z0 + (cz + (sz > 0 ? 1 : 0)) * GC - oz) * iz;
+      for (;;) {
+        const list = g.cells[cz * g.nx + cx];
+        for (let k = 0; k < list.length; k++) {
+          const i = list[k]; if (mark[i] === g.stamp) continue; mark[i] = g.stamp;
+          const c = cols[i]; if (!c[flag]) continue; tested++;
+          const t = slab(c, ox, oy, oz, ix, iy, iz, best); if (t >= 0) { best = t; hit = c; axis = AX; }
+        }
+        const exit = Math.min(tx, tz);
+        if (best <= exit || exit >= tb) break; // nothing closer can lie in a later cell
+        if (tx < tz) { cx += sx; tx += ddx; if (cx < 0 || cx >= g.nx) break; } else { cz += sz; tz += ddz; if (cz < 0 || cz >= g.nz) break; }
+      }
+    }
   }
+  for (let i = start; i < cols.length; i++) { // brute force (no grid, or the dynamic tail)
+    const c = cols[i]; if (!c[flag]) continue; tested++;
+    const t = slab(c, ox, oy, oz, ix, iy, iz, best); if (t >= 0) { best = t; hit = c; axis = AX; }
+  }
+  RAYSTATS.boxes += tested;
   if (!hit) return null;
   const d = axis === 0 ? dx : axis === 1 ? dy : dz, s = d > 0 ? -1 : 1;
   return { d: best, c: hit, nx: axis === 0 ? s : 0, ny: axis === 1 ? s : 0, nz: axis === 2 ? s : 0 };
+}
+// first collider overlapping an x/z rectangle for which test(c) is true (uses the grid when present)
+export function queryBoxes(cols, x0, x1, z0, z1, test) {
+  const g = cols.grid; let start = 0;
+  if (g) {
+    start = g.n; if (++g.stamp > 4e9) { g.mark.fill(0); g.stamp = 1; } const st = g.stamp;
+    const i0 = Math.max(0, Math.floor((x0 - g.x0) / GC)), i1 = Math.min(g.nx - 1, Math.floor((x1 - g.x0) / GC)), j0 = Math.max(0, Math.floor((z0 - g.z0) / GC)), j1 = Math.min(g.nz - 1, Math.floor((z1 - g.z0) / GC));
+    for (let j = j0; j <= j1; j++) for (let k = i0; k <= i1; k++) { const list = g.cells[j * g.nx + k]; for (let q = 0; q < list.length; q++) { const i = list[q]; if (g.mark[i] === st) continue; g.mark[i] = st; if (test(cols[i])) return cols[i]; } }
+  }
+  for (let i = start; i < cols.length; i++) if (test(cols[i])) return cols[i];
+  return null;
 }
 
 // ---------- navigation grid (1 m cells, per-cell floor height, A*, traversal links) ----------
@@ -762,6 +823,7 @@ export function buildWorld(id, scene) {
   Object.assign(W, (MAPS[id] || (id === 'forest' ? forest : warehouse))(B, W, scene));
   W.meshes = B.finish(scene);
   W.colliders = B.col; W.nav = new Nav(B.col, W.bounds); W.cover = buildCover(B.col, W.nav); W.lod = B.lod;
+  buildGrid(W.colliders);
   const e = W.env;
   scene.fog = new THREE.FogExp2(e.fog[0], e.fog[1]); scene.background = new THREE.Color(e.bg);
   W.hemi = new THREE.HemisphereLight(e.hemi[0], e.hemi[1], e.hemi[2]); scene.add(W.hemi);

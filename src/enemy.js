@@ -21,7 +21,8 @@ export const PROFILES = {
 const TYPES = {
   guard: { name: 'Rifleman', aggr: 0.5, caut: 0.5 }, aggressor: { name: 'Pointman', aggr: 0.85, caut: 0.25 }, cautious: { name: 'Marksman', aggr: 0.25, caut: 0.85 },
 };
-export const DMG = 15; // enemy rifle damage per hit, identical in every mode
+export const DMG = 15;
+const ANIM_IDLE = { speed: 0 }, ANIM_STUN = { speed: 0, crouch: true, aim: false, lean: 0 }; // enemy rifle damage per hit, identical in every mode
 
 const rr = (a) => rnd(a[0], a[1]), ri = (a) => Math.floor(rnd(a[0], a[1] + 1));
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 6.2832; while (d < -Math.PI) d += 6.2832; return d; };
@@ -331,13 +332,13 @@ export class Enemy {
   // ---------- main update ----------
   update(dt) {
     const G = this.g, P = G.player, pr = this.pr, ch = this.ch;
-    if (this.dead) { if (this.deadT < 4) { this.deadT += dt; ch.update(dt, { speed: 0 }); if (this.pos.y > G.world.nav.height(this.pos.x, this.pos.z) + 0.02) { this.pos.y = Math.max(G.world.nav.height(this.pos.x, this.pos.z), this.pos.y - dt * 4); this.sync(); } } return; }
+    if (this.dead) { if (this.deadT < 4) { this.deadT += dt; ch.tick(dt, ANIM_IDLE, G.animEvery(this.pos)); if (this.pos.y > G.world.nav.height(this.pos.x, this.pos.z) + 0.02) { this.pos.y = Math.max(G.world.nav.height(this.pos.x, this.pos.z), this.pos.y - dt * 4); this.sync(); } } return; }
     this.t += dt; this.stateT += dt; this.moved = 0;
     this.supp = Math.max(0, this.supp - dt * 0.25); this.radioCool -= dt;
     if (this.stun > 0) { // flashed: blind, cannot act, recovers into cover or a search
       this.stun -= dt; this.crouch = true; this.seeing = false; this.los = false; this.lkpAge += dt * 2; this.unseen += dt;
       if (this.trav) this.follow(dt, 0);
-      ch.update(dt, { speed: 0, crouch: true, aim: false, lean: 0 }); this.sync();
+      ch.tick(dt, ANIM_STUN, G.animEvery(this.pos)); this.sync();
       if (this.stun <= 0) { ch.stopUpper(); this.react = rr(pr.react) + 0.4; if (this.state !== 'COVER') { if (this.hasLkp && !this.takeCover('hold')) this.startSearch(this.pos.x, this.pos.z); } else this.toHide(); }
       return;
     }
@@ -492,7 +493,8 @@ export class Enemy {
     const target = face ?? (this.moved ? this.moveYaw : this.yaw), turn = (this.combat() ? 7 : 3.5) * dt, da = angd(target, this.yaw);
     this.yaw += Math.max(-turn, Math.min(turn, da));
     const pitch = this.seeing ? Math.atan2(P.pos.y + P.height * 0.6 - (this.pos.y + 1.4), Math.max(1, this.pd)) : 0;
-    ch.update(dt, { speed: this.trav ? 0 : this.moved, crouch: this.crouch && !this.moved, aim: aim && this.moved < 3.5 && !this.trav, pitch, lean });
+    const as = this.as || (this.as = {}); as.speed = this.trav ? 0 : this.moved; as.crouch = this.crouch && !this.moved; as.aim = aim && this.moved < 3.5 && !this.trav; as.pitch = pitch; as.lean = lean;
+    ch.tick(dt, as, this.state === 'COVER' && this.phase !== 'hide' ? 1 : G.animEvery(this.pos)); // a guard who is peeking is always animated at full rate
     this.sync();
   }
 }

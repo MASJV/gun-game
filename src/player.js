@@ -1,7 +1,10 @@
 // First-person controller: movement, leaning, mantling, three weapon slots, melee, throwables, medical.
 import * as THREE from 'three';
 import { WEAPONS, KITS, statsFor, buildView } from './weapons.js';
+import { queryBoxes } from './world.js';
 
+const HQ = { x: 0, y: 0, z: 0, h: 0, r: 0 }, hitTest = (c) => c.solid && HQ.x + HQ.r > c.x0 && HQ.x - HQ.r < c.x1 && HQ.z + HQ.r > c.z0 && HQ.z - HQ.r < c.z1 && HQ.y < c.y1 - 0.001 && HQ.y + HQ.h > c.y0;
+const damp = (rate, dt) => 1 - Math.exp(-rate * dt); // frame-rate independent exponential smoothing
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const R = 0.34, THROW = ['frag', 'flash', 'smoke'];
 export const THROW_NAME = { frag: 'FRAG', flash: 'FLASH', smoke: 'SMOKE' };
@@ -43,12 +46,8 @@ export class Player {
   get w() { return this.slots[this.cur].st; }
   busy() { return this.swT > 0 || this.reloading || !!this.use || !!this.mantle; }
   hits(x, y, z, h = this.height, r = R) {
-    const cols = this.g.world.colliders;
-    for (let i = 0; i < cols.length; i++) {
-      const c = cols[i];
-      if (c.solid && x + r > c.x0 && x - r < c.x1 && z + r > c.z0 && z - r < c.z1 && y < c.y1 - 0.001 && y + h > c.y0) return c;
-    }
-    return null;
+    HQ.x = x; HQ.y = y; HQ.z = z; HQ.h = h; HQ.r = r;
+    return queryBoxes(this.g.world.colliders, x - r, x + r, z - r, z + r, hitTest);
   }
   switchTo(i) { if (i === this.cur || this.swT > 0 || this.dead || this.use || !this.slots[i]) return; this.next = i; this.swT = 0.4; this.reloading = false; this.g.audio.click(0.35); }
   reload() {
@@ -94,72 +93,83 @@ export class Player {
     else if (u.type === 'stim') { this.inv.stim--; this.hp = Math.min(100, this.hp + 25); this.stimT = 8; G.audio.stim(); }
     else if (u.type === 'melee') G.melee();
   }
+  // one physics sub-step of length dt (see update)
+  moveStep(dt, k, inp, w, first) {
+    const G = this.g, p = this.pos, sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
+    let f = (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0), sd = (k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0);
+    const l = Math.hypot(f, sd) || 1; f /= l; sd /= l;
+    this.noSprint -= dt;
+    const sprint = (k.ShiftLeft || k.ShiftRight) && f > 0 && !this.crouch && this.noSprint <= 0 && !inp.rmb && this.grounded && !this.use;
+    this.sprinting = sprint;
+    const sp = (this.crouch ? 2.3 : sprint ? 6.9 : 4.5) * w.move * (1 - 0.42 * this.adsF) * (this.use && this.use.type === 'med' ? 0.55 : 1) * (this.stimT > 0 ? 1.12 : 1) * (1 - Math.abs(this.lean) * 0.5);
+    const wx = (-sy * f + cy * sd) * sp, wz = (-cy * f - sy * sd) * sp;
+    const vx0 = this.vel.x, vz0 = this.vel.z;
+    const acc = (this.grounded ? (f || sd ? 60 : 48) : 9) * dt, dvx = wx - this.vel.x, dvz = wz - this.vel.z, dl = Math.hypot(dvx, dvz);
+    if (dl > acc) { this.vel.x += (dvx / dl) * acc; this.vel.z += (dvz / dl) * acc; } else { this.vel.x = wx; this.vel.z = wz; }
+    if (first && inp.jump && this.grounded) { this.vel.y = this.crouch ? 5.2 : 6.6; this.grounded = false; G.audio.step(0.25); }
+    const vy0 = this.vel.y; this.vel.y -= 21 * dt;
+    const wasG = this.grounded, mx0 = (vx0 + this.vel.x) * 0.5 * dt, mz0 = (vz0 + this.vel.z) * 0.5 * dt; // average velocity = exact for constant acceleration
+    const axis = (ax) => {
+      const n = ax === 'x' ? p.x + mx0 : p.z + mz0;
+      const tx = ax === 'x' ? n : p.x, tz = ax === 'x' ? p.z : n, c = this.hits(tx, p.y, tz);
+      if (!c) { p[ax] = n; return; }
+      const rise = c.y1 - p.y;
+      if (wasG && rise <= 0.45 && !this.hits(tx, c.y1, tz)) { p[ax] = n; p.y = c.y1; return; }
+      if (k.Space && rise > 0.45 && rise <= 1.4 && !this.mantle && !this.use) { // mantle: pull up onto the obstacle
+        const dir = Math.sign(this.vel[ax]) || 1, mx = ax === 'x' ? p.x + dir * 0.75 : p.x, mz = ax === 'x' ? p.z : p.z + dir * 0.75;
+        if (!this.hits(mx, c.y1 + 0.02, mz, 1.2)) { this.mantle = { t: 0, x0: p.x, z0: p.z, y0: p.y, x1: mx, z1: mz, y1: c.y1 }; this.crouchToggle = this.crouchToggle || !!this.hits(mx, c.y1 + 0.02, mz, 1.8); G.audio.step(0.3); }
+      }
+      this.vel[ax] = 0;
+    };
+    axis('x'); axis('z');
+    const fall = this.vel.y;
+    let ny = p.y + (vy0 + this.vel.y) * 0.5 * dt; // exact parabola
+    this.grounded = false;
+    if (ny <= 0) { ny = 0; this.grounded = true; this.vel.y = 0; }
+    else { const c = this.hits(p.x, ny, p.z); if (c) { if (this.vel.y <= 0) { ny = c.y1; this.grounded = true; } else ny = p.y; this.vel.y = 0; } }
+    if (!this.mantle) p.y = ny;
+    if (this.grounded && !wasG && fall < -4) { this.dip = Math.min(0.16, -fall * 0.014); G.audio.land(); G.sound(p, 9, 'step'); if (fall < -13) this.damage((-fall - 13) * 6, p, { name: 'a fall', dist: 0, x: p.x, z: p.z, fall: true }); }
+    this.speed = Math.hypot(this.vel.x, this.vel.z);
+    if (this.grounded && this.speed > 0.6) {
+      const prev = this.bob; this.bob += this.speed * dt * 1.75;
+      if (Math.floor(prev / Math.PI) !== Math.floor(this.bob / Math.PI)) {
+        G.audio.step(this.crouch ? 0.06 : sprint ? 0.26 : 0.15);
+        if (!this.crouch) G.sound(p, sprint ? 13 : 6.5, 'step');
+      }
+    }
+  }
   update(dt) {
     const G = this.g, inp = G.inp, k = inp.k, s = this.slot, w = s.st;
     // look
     const zoom = w.melee ? 1 : 1 + (Math.tan((this.adsFov() * Math.PI) / 360) / Math.tan((G.fov * Math.PI) / 360) - 1) * this.adsF, sens = 0.0022 * G.sens * zoom; // sensitivity follows magnification
     this.yaw -= inp.mx * sens; this.pitch = clamp(this.pitch - inp.my * sens, -1.5, 1.5);
-    this.swayX += (clamp(-inp.mx * 0.0005, -0.03, 0.03) - this.swayX) * Math.min(1, dt * 10);
-    this.swayY += (clamp(inp.my * 0.0005, -0.03, 0.03) - this.swayY) * Math.min(1, dt * 10);
+    // weapon sway follows the look *rate* (counts per 60 Hz frame), so it is the same at any frame rate; camera rotation itself is never smoothed
+    const ws = G.weaponSway ?? 1, rate = 1 / (60 * Math.max(dt, 1e-3));
+    this.swayX += (clamp(-inp.mx * rate * 0.0005, -0.03, 0.03) * ws - this.swayX) * damp(10, dt);
+    this.swayY += (clamp(inp.my * rate * 0.0005, -0.03, 0.03) * ws - this.swayY) * damp(10, dt);
     const p = this.pos, sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     // stance
     const wantCrouch = !!(k.ControlLeft || k.ControlRight) || this.crouchToggle;
     if (wantCrouch) { this.crouch = true; this.height = 1.2; }
     else if (this.crouch) { this.height = 1.8; if (this.hits(p.x, p.y, p.z)) this.height = 1.2; else this.crouch = false; }
-    this.eye += ((this.crouch ? 1.0 : 1.62) - this.eye) * Math.min(1, dt * 12);
+    this.eye += ((this.crouch ? 1.0 : 1.62) - this.eye) * damp(12, dt);
     this.stimT = Math.max(0, this.stimT - dt);
     if (this.mantle) { // climbing onto an obstacle
       const m = this.mantle; m.t += dt / 0.42; const t = Math.min(1, m.t), e = t * t * (3 - 2 * t);
       p.y = m.y0 + (m.y1 - m.y0) * Math.min(1, e * 1.5); p.x = m.x0 + (m.x1 - m.x0) * Math.max(0, e * 1.6 - 0.6); p.z = m.z0 + (m.z1 - m.z0) * Math.max(0, e * 1.6 - 0.6);
       this.vel.set(0, 0, 0); this.grounded = true; if (t >= 1) this.mantle = null;
     } else {
-      let f = (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0), sd = (k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0);
-      const l = Math.hypot(f, sd) || 1; f /= l; sd /= l;
-      this.noSprint -= dt;
-      const sprint = (k.ShiftLeft || k.ShiftRight) && f > 0 && !this.crouch && this.noSprint <= 0 && !inp.rmb && this.grounded && !this.use;
-      this.sprinting = sprint;
-      const sp = (this.crouch ? 2.3 : sprint ? 6.9 : 4.5) * w.move * (1 - 0.42 * this.adsF) * (this.use && this.use.type === 'med' ? 0.55 : 1) * (this.stimT > 0 ? 1.12 : 1) * (1 - Math.abs(this.lean) * 0.5);
-      const wx = (-sy * f + cy * sd) * sp, wz = (-cy * f - sy * sd) * sp;
-      const acc = (this.grounded ? (f || sd ? 60 : 48) : 9) * dt, dvx = wx - this.vel.x, dvz = wz - this.vel.z, dl = Math.hypot(dvx, dvz);
-      if (dl > acc) { this.vel.x += (dvx / dl) * acc; this.vel.z += (dvz / dl) * acc; } else { this.vel.x = wx; this.vel.z = wz; }
-      if (inp.jump && this.grounded) { this.vel.y = this.crouch ? 5.2 : 6.6; this.grounded = false; G.audio.step(0.25); }
+      // fixed sub-steps (<= 1/120 s) with exact constant-acceleration integration: movement, jumps and
+      // collisions come out the same at 30, 60 or 144+ frames per second
+      const n = Math.max(1, Math.ceil(dt * 120 - 1e-6)), h = dt / n;
+      for (let i = 0; i < n && !this.mantle; i++) this.moveStep(h, k, inp, w, i === 0);
       inp.jump = false;
-      this.vel.y -= 21 * dt;
-      const wasG = this.grounded;
-      const axis = (ax) => {
-        const n = ax === 'x' ? p.x + this.vel.x * dt : p.z + this.vel.z * dt;
-        const tx = ax === 'x' ? n : p.x, tz = ax === 'x' ? p.z : n, c = this.hits(tx, p.y, tz);
-        if (!c) { p[ax] = n; return; }
-        const rise = c.y1 - p.y;
-        if (wasG && rise <= 0.45 && !this.hits(tx, c.y1, tz)) { p[ax] = n; p.y = c.y1; return; }
-        if (k.Space && rise > 0.45 && rise <= 1.4 && !this.mantle && !this.use) { // mantle: pull up onto the obstacle
-          const dir = Math.sign(this.vel[ax]) || 1, mx = ax === 'x' ? p.x + dir * 0.75 : p.x, mz = ax === 'x' ? p.z : p.z + dir * 0.75;
-          if (!this.hits(mx, c.y1 + 0.02, mz, 1.2)) { this.mantle = { t: 0, x0: p.x, z0: p.z, y0: p.y, x1: mx, z1: mz, y1: c.y1 }; this.crouchToggle = this.crouchToggle || !!this.hits(mx, c.y1 + 0.02, mz, 1.8); G.audio.step(0.3); }
-        }
-        this.vel[ax] = 0;
-      };
-      axis('x'); axis('z');
-      const fall = this.vel.y;
-      let ny = p.y + this.vel.y * dt;
-      this.grounded = false;
-      if (ny <= 0) { ny = 0; this.grounded = true; this.vel.y = 0; }
-      else { const c = this.hits(p.x, ny, p.z); if (c) { if (this.vel.y <= 0) { ny = c.y1; this.grounded = true; } else ny = p.y; this.vel.y = 0; } }
-      if (!this.mantle) p.y = ny;
-      if (this.grounded && !wasG && fall < -4) { this.dip = Math.min(0.16, -fall * 0.014); G.audio.land(); G.sound(p, 9, 'step'); if (fall < -13) this.damage((-fall - 13) * 6, p, { name: 'a fall', dist: 0, x: p.x, z: p.z, fall: true }); }
-      this.speed = Math.hypot(this.vel.x, this.vel.z);
-      if (this.grounded && this.speed > 0.6) {
-        const prev = this.bob; this.bob += this.speed * dt * 1.75;
-        if (Math.floor(prev / Math.PI) !== Math.floor(this.bob / Math.PI)) {
-          G.audio.step(this.crouch ? 0.06 : sprint ? 0.26 : 0.15);
-          if (!this.crouch) G.sound(p, sprint ? 13 : 6.5, 'step');
-        }
-      }
     }
-    this.dip += (0 - this.dip) * Math.min(1, dt * 9);
-    this.sprintF += ((this.sprinting ? 1 : 0) - this.sprintF) * Math.min(1, dt * 9);
+    this.dip += (0 - this.dip) * damp(9, dt);
+    this.sprintF += ((this.sprinting ? 1 : 0) - this.sprintF) * damp(9, dt);
     // lean (Q / F): camera and upper body move sideways, clamped by geometry
     const wantLean = this.sprinting || this.mantle ? 0 : (k.KeyF ? 1 : 0) - (k.KeyQ ? 1 : 0);
-    this.lean += (wantLean - this.lean) * Math.min(1, dt * 9);
+    this.lean += (wantLean - this.lean) * damp(9, dt);
     let off = this.lean * 0.46;
     for (let i = 0; i < 4 && Math.abs(off) > 0.02; i++) { if (!this.hits(p.x + cy * off, p.y + this.eye - 0.25, p.z - sy * off, 0.4, 0.14)) break; off *= 0.6; if (i === 3) off = 0; }
     this.leanX = cy * off; this.leanZ = -sy * off;
@@ -211,17 +221,21 @@ export class Player {
     inp.lmbPressed = false;
     const mv = this.speed / 4.5;
     if (!w.melee) this.spread = (w.hip * (1 + mv * 0.9 + (this.grounded ? 0 : 2)) * (this.crouch ? 0.75 : 1) * (w.att.laser && this.laserOn ? 0.6 : 1)) * (1 - this.adsF) + w.ads * (1 + mv * 0.6) * this.adsF + this.burst * 0.03;
-    const rc = Math.min(1, dt * 7); this.rp -= this.rp * rc; this.ry -= this.ry * rc; this.kick -= this.kick * Math.min(1, dt * 14);
+    const rc = damp(7, dt); this.rp -= this.rp * rc; this.ry -= this.ry * rc; this.kick -= this.kick * damp(14, dt);
     // camera
-    const cam = G.camera, bobY = Math.sin(this.bob * 2) * 0.028 * Math.min(1, mv) * (1 - this.adsF * 0.6), bobX = Math.cos(this.bob) * 0.02 * Math.min(1, mv);
-    const sh = this.shake * 0.05;
-    cam.position.set(p.x + cy * bobX + this.leanX + (Math.random() - 0.5) * sh, p.y + this.eye + bobY - this.dip - Math.abs(off) * 0.08 + (Math.random() - 0.5) * sh, p.z - sy * bobX + this.leanZ);
-    cam.rotation.set(this.pitch + this.rp + (this.scopeY || 0), this.yaw + this.ry + (this.scopeX || 0), -off * 0.3);
-    const fov = G.fov + ((w.melee ? G.fov : this.adsFov()) - G.fov) * this.adsF * this.adsF * (3 - 2 * this.adsF) + this.sprintF * 4;
+    // Camera comfort: everything below that is not gameplay information is scaled by the CAMERA MOTION setting
+    // (0 = off). The camera never moves sideways with footsteps (a common cause of eye strain); that sway lives
+    // on the weapon only. Explosion shake is a smooth low-frequency wobble, not per-frame random jitter.
+    const cam = G.camera, cmo = G.camMotion ?? 0.5, wsw = G.weaponSway ?? 1, gait = Math.min(1, mv), t = this.swT2;
+    const bobY = Math.sin(this.bob * 2) * 0.028 * gait * (1 - this.adsF * 0.6), bobX = Math.cos(this.bob) * 0.02 * gait;
+    const sh = this.shake * 0.05 * cmo, shx = sh * (Math.sin(t * 31) + Math.sin(t * 47) * 0.5), shy = sh * (Math.sin(t * 37 + 1) + Math.sin(t * 53) * 0.5);
+    cam.position.set(p.x + this.leanX + shx * cy, p.y + this.eye + bobY * cmo - this.dip * cmo - Math.abs(off) * 0.08 + shy, p.z + this.leanZ - shx * sy);
+    cam.rotation.set(this.pitch + this.rp + (this.scopeY || 0), this.yaw + this.ry + (this.scopeX || 0), -off * 0.3 * cmo);
+    const fov = G.fov + ((w.melee ? G.fov : this.adsFov()) - G.fov) * this.adsF * this.adsF * (3 - 2 * this.adsF) + this.sprintF * 4 * cmo;
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
     cam.updateMatrixWorld();
     cam.getWorldDirection(this.fwd); this.eyePos.copy(cam.position);
-    this.animate(dt, bobX, bobY);
+    this.animate(dt, bobX * wsw, bobY * wsw);
   }
   shoot() {
     const G = this.g, s = this.slot, w = s.st, cam = G.camera;

@@ -10,6 +10,8 @@ import { A, makeGun } from './assets.js';
 const LOWER = /^(root|pelvis|thigh|calf|foot|ball)/;
 const LOCO = { idle: 'Idle_Loop', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', sprint: 'Sprint_Loop', cidle: 'Crouch_Idle_Loop', cwalk: 'Crouch_Fwd_Loop' };
 const UPPER = { aimN: 'Pistol_Aim_Neutral', aimU: 'Pistol_Aim_Up', aimD: 'Pistol_Aim_Down' };
+const LN = Object.keys(LOCO), UN = Object.keys(UPPER), TL = new Float32Array(LN.length), TU = new Float32Array(UN.length); // 0 idle 1 walk 2 jog 3 sprint 4 cidle 5 cwalk | 0 aimN 1 aimU 2 aimD
+const damp = (rate, dt) => 1 - Math.exp(-rate * dt); // frame-rate independent smoothing factor
 const UONE = ['Pistol_Reload', 'OverhandThrow', 'Interact', 'Idle_TalkingPhone_Loop', 'Hit_Chest', 'Hit_Head'];
 const FONE = ['Death01', 'Hit_Knockback', 'ClimbUp_1m', 'Roll', 'Jump_Start'];
 export const PALETTES = {
@@ -39,7 +41,7 @@ function init() {
   }
   const rest = {}, boneRest = {}; for (const b of bones) { rest[b.name] = b.getWorldPosition(new THREE.Vector3()); boneRest[b.name] = b.matrixWorld.clone(); }
   const F = Math.sign(rest.ball_l.z - rest.foot_l.z) || 1; // which way the model faces along Z
-  T = { body, meshes, region, rest, boneRest, F, geos: {}, clips: {}, mats: {}, gear: {} };
+  T = { body, meshes, region, rest, boneRest, F, geos: {}, clips: {}, mats: {}, gear: {}, full: {}, guns: {} };
   for (const k in LOCO) { T.clips[k] = subclip(LOCO[k], true); T.clips[k + 'U'] = subclip(LOCO[k], false); }
   for (const k in UPPER) T.clips[k] = subclip(UPPER[k], false);
   for (const k of UONE) T.clips[k] = subclip(k, false);
@@ -53,9 +55,57 @@ function init() {
   T.gunPos = new THREE.Vector3(0, -0.035, 0.075 * F).applyQuaternion(hq);
   T.mats.joint = new THREE.MeshStandardMaterial({ color: 0x141517, roughness: 0.95, metalness: 0 });
   T.mats.body = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
+  T.mats.gunMerged = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.55 });
   T.mats.gear = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.05 });
   T.mats.flash = new THREE.MeshBasicMaterial({ color: 0xffd890, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
   T.geo = { helmet: new THREE.SphereGeometry(0.128, 14, 10, 0, 6.283, 0, 1.75), box: new THREE.BoxGeometry(1, 1, 1), flash: new THREE.OctahedronGeometry(0.09, 0) };
+}
+// One skinned geometry per palette: body + joint caps + all gear, gear rigidly skinned (weight 1) to its bone.
+// A soldier is then a single skinned draw call (plus his gun) instead of ~14 separate meshes.
+// the soldier's rifle as one vertex-coloured mesh (the source model has one draw call per material)
+function mergeGun(gun, id) {
+  if (!T.guns[id]) {
+    gun.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(gun.matrixWorld).invert(), parts = [];
+    gun.model.traverse((o) => {
+      if (!o.isMesh) return;
+      const g = o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)), n = g.attributes.position.count, c = new Float32Array(n * 3), col = o.material.color;
+      for (let i = 0; i < n; i++) { c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; }
+      for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3)); parts.push(g.index ? g.toNonIndexed() : g);
+    });
+    T.guns[id] = mergeGeometries(parts);
+  }
+  gun.remove(gun.model); const m = new THREE.Mesh(T.guns[id], T.mats.gunMerged); m.castShadow = false; gun.add(m); gun.model = m;
+}
+function fullGeo(pal, gear) {
+  if (T.full[pal] !== undefined) return T.full[pal];
+  const body = T.body, joints = T.meshes.find((m) => m !== body), bones = body.skeleton.bones, si = body.geometry.attributes.skinIndex, sw = body.geometry.attributes.skinWeight;
+  const same = (a, b) => a.elements.every((v, i) => Math.abs(v - b.elements[i]) < 1e-5);
+  if (joints && (!same(joints.bindMatrix, body.bindMatrix) || joints.skeleton.bones.some((b, i) => b.name !== bones[i].name))) return (T.full[pal] = null); // cannot merge safely
+  const plain = (a) => { // fresh, non-interleaved copy so every part has identical attribute metadata
+    const n = a.count, k = a.itemSize, Ctor = a.isInterleavedBufferAttribute ? a.data.array.constructor : a.array.constructor, out = new Ctor(n * k);
+    for (let i = 0; i < n; i++) for (let j = 0; j < k; j++) out[i * k + j] = a.isInterleavedBufferAttribute ? a.data.array[i * a.data.stride + a.offset + j] : a.array[i * k + j];
+    return new THREE.BufferAttribute(out, k, a.normalized);
+  };
+  const strip = (g) => { const r = new THREE.BufferGeometry(); for (const k of ['position', 'normal', 'color', 'skinIndex', 'skinWeight']) r.setAttribute(k, plain(g.attributes[k])); r.setIndex(g.index ? Array.from(g.index.array) : null); return r; };
+  const parts = [strip(bodyGeo(pal).clone())];
+  if (joints) { const j = joints.geometry.clone(), n = j.attributes.position.count, c = new Float32Array(n * 3).fill(0.0067); j.setAttribute('color', new THREE.BufferAttribute(c, 3)); parts.push(strip(j)); }
+  const toMesh = new THREE.Matrix4().copy(body.matrixWorld).invert();
+  for (const bone in gear) {
+    const bi = bones.findIndex((b) => b.name === bone);
+    for (const g0 of gear[bone]) {
+      const g = g0.clone().applyMatrix4(toMesh), n = g.attributes.position.count, idx = new si.array.constructor(n * 4), wt = new sw.array.constructor(n * 4);
+      for (let i = 0; i < n; i++) { idx[i * 4] = bi; wt[i * 4] = sw.normalized ? 255 : 1; }
+      g.setAttribute('skinIndex', new THREE.BufferAttribute(idx, 4, si.normalized)); g.setAttribute('skinWeight', new THREE.BufferAttribute(wt, 4, sw.normalized));
+      parts.push(strip(g.index ? g : g));
+    }
+  }
+  const m = mergeGeometries(parts.map((g) => (g.index ? g : g)));
+  if (!m) return (T.full[pal] = null);
+  // generous bounds so an animated / crouched / fallen soldier is never culled by mistake
+  const s = new THREE.Vector3(); body.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), s);
+  m.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0).applyMatrix4(toMesh), 2.2 / Math.max(s.x, s.y, s.z));
+  return (T.full[pal] = m);
 }
 function bodyGeo(pal) {
   if (T.geos[pal]) return T.geos[pal];
@@ -93,25 +143,33 @@ export class Character {
     const root = (this.root = new THREE.Group()), inner = (this.inner = SkeletonUtils.clone(A.models.soldier));
     root.rotation.order = 'YXZ'; inner.rotation.y = T.F > 0 ? Math.PI : 0; root.add(inner);
     this.bones = {};
+    const full = fullGeo(palette, this.dress(palette)), drop = [];
     inner.traverse((o) => {
       if (o.isBone) this.bones[o.name] = o;
-      if (o.isSkinnedMesh) { const main = o.geometry === T.body.geometry; o.geometry = main ? bodyGeo(palette) : o.geometry; o.material = main ? T.mats.body : T.mats.joint; o.castShadow = true; o.frustumCulled = false; }
+      if (!o.isSkinnedMesh) return;
+      const main = o.geometry === T.body.geometry;
+      if (full) { if (main) { o.geometry = full; o.material = T.mats.body; o.castShadow = true; o.frustumCulled = true; } else drop.push(o); return; }
+      o.geometry = main ? bodyGeo(palette) : o.geometry; o.material = main ? T.mats.body : T.mats.joint; o.castShadow = true; o.frustumCulled = false; // fallback: unmerged
     });
+    for (const o of drop) o.parent.remove(o);
     inner.updateMatrixWorld(true);
-    this.dress(palette);
+    if (!full) this.addGear(palette);
     // weapon in the right hand
     if (gunId) {
-      const gun = (this.gun = makeGun(gunId)); gun.traverse((o) => { o.castShadow = false; }); gun.quaternion.copy(T.gunQuat); gun.position.copy(T.gunPos); this.bones.hand_r.add(gun);
+      const gun = (this.gun = makeGun(gunId)); mergeGun(gun, gunId); gun.quaternion.copy(T.gunQuat); gun.position.copy(T.gunPos); this.bones.hand_r.add(gun);
       this.flash = new THREE.Mesh(T.geo.flash, T.mats.flash); this.flash.position.copy(gun.muzzle).z -= 0.08; this.flash.scale.set(1, 1, 2.2); this.flash.visible = false; gun.add(this.flash);
       this.gripL = gun.pt(gun.def.hand); this.gripL.y -= 0.035; this.gripL.z += 0.03;
     } else { this.gun = null; this.flash = { visible: false }; }
     // animation
     const mx = (this.mixer = new THREE.AnimationMixer(inner));
     this.act = {};
-    for (const k in T.clips) { const a = (this.act[k] = mx.clipAction(T.clips[k])); a.setEffectiveWeight(0); if (LOCO[k] || LOCO[k.slice(0, -1)] || UPPER[k]) a.play(); }
-    for (const k in LOCO) this.act[k + 'U'].syncWith(this.act[k]);
-    this.w = {}; for (const k in this.act) this.w[k] = 0;
-    this.act.idle.setEffectiveWeight(1); this.w.idle = 1;
+    for (const k in T.clips) { const a = (this.act[k] = mx.clipAction(T.clips[k])); a.setEffectiveWeight(0); a.play(); }
+    mx.update(0); for (const k in this.act) this.act[k].stop(); // bind every clip now, not lazily on first use mid-fight (a 2-4 ms hitch each)
+    // Only actions with weight are kept running (see setW): idle actions still cost the mixer a full evaluation.
+    // flat arrays for the per-frame blend (no objects or strings are created while animating)
+    this.locoA = LN.map((n) => this.act[n]); this.locoU = LN.map((n) => this.act[n + 'U']); this.upA = UN.map((n) => this.act[n]);
+    this.wl = new Float32Array(LN.length); this.wu = new Float32Array(UN.length); this.wl[0] = 1;
+    this.setW(this.locoA[0], 1, null);
     this.uOne = null; this.fOne = null; this.dead = false; this.lean = 0; this.kick = 0; this.flashT = 0; this.aimW = 0; this.crouchW = 0; this.ikW = 0; this.zones = null; this.zoneFrame = -1;
     mx.update(0.01);
   }
@@ -120,10 +178,9 @@ export class Character {
       const P = PALETTES[pal], R = T.rest, F = T.F, groups = {}, m4 = new THREE.Matrix4(), inv = new THREE.Matrix4(), e = new THREE.Euler(), q = new THREE.Quaternion();
       const add = (bone, geo, hex, x, y, z, sx, sy, sz) => {
         const g = geo.clone().applyMatrix4(m4.compose(new THREE.Vector3(x, y, z * F), q.setFromEuler(e.set(0, 0, 0)), new THREE.Vector3(sx, sy, sz)));
-        g.applyMatrix4(inv.copy(T.boneRest[bone]).invert());
         const c = new THREE.Color(hex), n = g.attributes.position.count, col = new Float32Array(n * 3);
         for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
-        g.setAttribute('color', new THREE.BufferAttribute(col, 3)); (groups[bone] || (groups[bone] = [])).push(g);
+        g.setAttribute('color', new THREE.BufferAttribute(col, 3)); (groups[bone] || (groups[bone] = [])).push(g); // world rest space; skinned to 'bone' in fullGeo()
       };
       const B = T.geo.box, G = P.gear, H = P.helmet, D = 0x0d0e0f, h = R.Head, c = R.spine_03, p = R.pelvis;
       if (P.civ === 'hostage') { add('Head', B, 0xd8d8d0, h.x, h.y + 0.07, h.z + 0.02, 0.2, 0.045, 0.2); add('spine_03', B, 0xd0d0c8, c.x, c.y + 0.02, c.z + 0.1, 0.2, 0.12, 0.02); } // blindfold + number patch
@@ -140,11 +197,28 @@ export class Character {
       add('thigh_r', B, D, R.thigh_r.x + 0.085 * Math.sign(R.thigh_r.x), R.thigh_r.y - 0.14, R.thigh_r.z, 0.05, 0.17, 0.1);
       for (const s of ['l', 'r']) add('calf_' + s, B, D, R['calf_' + s].x, R['calf_' + s].y - 0.02, R['calf_' + s].z + 0.055, 0.105, 0.13, 0.05);
       }
-      T.gear[pal] = Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, mergeGeometries(v)]));
+      T.gear[pal] = groups;
     }
-    for (const bone in T.gear[pal]) { const m = new THREE.Mesh(T.gear[pal][bone], T.mats.gear); m.frustumCulled = false; this.bones[bone].add(m); }
+    return T.gear[pal];
   }
   setShadow(on) { if (this.shadowOn === on) return; this.shadowOn = on; this.inner.traverse((o) => { if (o.isSkinnedMesh) o.castShadow = on; }); }
+  addGear(pal) { // fallback path only (when the meshes cannot be merged): one rigid mesh per bone
+    for (const bone in T.gear[pal]) { const inv = new THREE.Matrix4().copy(T.boneRest[bone]).invert(), g = mergeGeometries(T.gear[pal][bone].map((x) => x.clone().applyMatrix4(inv))); const m = new THREE.Mesh(g, T.mats.gear); this.bones[bone].add(m); }
+  }
+  // set an action's weight; start it when it gains weight (phase-matched to a running partner), stop it at zero
+  setW(a, w, partner) {
+    if (w > 0.002) {
+      if (!a.isRunning()) { a.reset(); a.play(); if (partner && partner.isRunning()) a.time = (partner.time / partner.getClip().duration) * a.getClip().duration; }
+      a.setEffectiveWeight(w);
+    } else if (a.isRunning()) { a.setEffectiveWeight(0); a.stop(); }
+  }
+  // Animation level of detail: distant / unseen soldiers are animated at a lower rate. Rendering, sight and hit zones
+  // all read the same pose, so what you see is still exactly what you can hit.
+  tick(dt, s, every = 1) {
+    this.accDt = (this.accDt || 0) + dt; this.tickN = (this.tickN || 0) + 1;
+    if (this.tickN < every) return false;
+    const d = this.accDt; this.accDt = 0; this.tickN = 0; this.update(d, s); return true;
+  }
   // one-shot helpers -------------------------------------------------------------------------
   playUpper(name, { loop = false, speed = 1, fade = 0.15 } = {}) {
     if (this.dead) return 0;
@@ -164,36 +238,34 @@ export class Character {
   // per-frame ---------------------------------------------------------------------------------
   // s: { speed (m/s), crouch, aim (bool), pitch (rad, + = up), lean (-1..1, + = to the character's right) }
   update(dt, s) {
-    const w = this.w, k = Math.min(1, dt * 9), tgt = {};
-    for (const n in w) tgt[n] = 0;
+    const k = damp(9, dt);
+    TL.fill(0); TU.fill(0);
     let fw = 0, uw = 0;
     if (this.fOne) { const f = this.fOne; f.t += dt; f.w = f.t > f.dur - f.fade ? Math.max(0, (f.dur - f.t) / f.fade) : Math.min(1, f.t / f.fade); if (this.dead) f.w = Math.min(1, f.t / 0.08); fw = f.w; f.a.setEffectiveWeight(fw); if (f.t >= f.dur) { f.a.stop(); this.fOne = null; } }
     if (this.uOne) { const u = this.uOne; u.t += dt; u.w = u.t > u.dur - u.fade ? Math.max(0, (u.dur - u.t) / u.fade) : Math.min(1, u.t / u.fade); uw = u.w * (1 - fw); u.a.setEffectiveWeight(uw); if (u.t >= u.dur) { u.a.stop(); this.uOne = null; } }
     if (!this.dead) {
       // lower body from speed / stance
       this.crouchW += ((s.crouch ? 1 : 0) - this.crouchW) * k;
-      const sp = s.speed, c = this.crouchW;
-      let lo;
-      if (sp < 0.15) lo = { idle: 1 }; else if (sp < 1.9) lo = { idle: Math.max(0, 1 - sp / 0.9), walk: Math.min(1, sp / 0.9) };
-      else if (sp < 3.6) { const t = (sp - 1.9) / 1.7; lo = { walk: 1 - t, jog: t }; } else { const t = Math.min(1, (sp - 3.6) / 1.4); lo = { jog: 1 - t, sprint: t }; }
-      const cm = Math.min(1, sp / 0.8);
-      for (const n in lo) tgt[n] = lo[n] * (1 - c);
-      tgt.cidle = c * (1 - cm); tgt.cwalk = c * cm;
+      const sp = s.speed, c = 1 - this.crouchW, cm = Math.min(1, sp / 0.8);
+      if (sp < 0.15) TL[0] = c; else if (sp < 1.9) { TL[0] = Math.max(0, 1 - sp / 0.9) * c; TL[1] = Math.min(1, sp / 0.9) * c; }
+      else if (sp < 3.6) { const t = (sp - 1.9) / 1.7; TL[1] = (1 - t) * c; TL[2] = t * c; } else { const t = Math.min(1, (sp - 3.6) / 1.4); TL[2] = (1 - t) * c; TL[3] = t * c; }
+      TL[4] = this.crouchW * (1 - cm); TL[5] = this.crouchW * cm;
       this.act.walk.timeScale = this.act.walkU.timeScale = sp < 1.9 ? THREE.MathUtils.clamp(sp / 1.45, 0.6, 1.5) : 1.2;
       this.act.cwalk.timeScale = this.act.cwalkU.timeScale = THREE.MathUtils.clamp(sp / 1.3, 0.6, 1.6);
       // upper body: weapon up when aiming, low-ready otherwise
-      this.aimW += ((s.aim ? 1 : 0) - this.aimW) * Math.min(1, dt * 7);
-      const a = this.aimW, pt = THREE.MathUtils.clamp((s.pitch || 0) / 0.7, -1, 1);
-      tgt.aimN = a * (1 - Math.abs(pt)); tgt.aimU = a * Math.max(0, pt); tgt.aimD = a * Math.max(0, -pt) + (1 - a) * 0.55; tgt.aimN += (1 - a) * 0.45; // not aiming = muzzle-down low ready
-      for (const n of ['aimN', 'aimU', 'aimD']) tgt[n] *= 1 - uw;
+      this.aimW += ((s.aim ? 1 : 0) - this.aimW) * damp(7, dt);
+      const a = this.aimW, pt = THREE.MathUtils.clamp((s.pitch || 0) / 0.7, -1, 1), nu = 1 - uw;
+      TU[0] = (a * (1 - Math.abs(pt)) + (1 - a) * 0.45) * nu; TU[1] = a * Math.max(0, pt) * nu; TU[2] = (a * Math.max(0, -pt) + (1 - a) * 0.55) * nu; // not aiming = muzzle-down low ready
     }
-    const base = 1 - fw;
-    for (const n in LOCO) { w[n] += (tgt[n] - w[n]) * k; this.act[n].setEffectiveWeight(w[n] * base); this.act[n + 'U'].setEffectiveWeight(this.gun ? 0 : w[n] * base * (1 - uw)); }
-    for (const n in UPPER) { w[n] += (tgt[n] - w[n]) * k; this.act[n].setEffectiveWeight(this.gun ? w[n] * base : 0); }
+    const base = 1 - fw, wl = this.wl, wu = this.wu, armed = !!this.gun;
+    let lead = null; for (let i = 0; i < wl.length; i++) if (this.locoA[i].isRunning() && (!lead || wl[i] > wl[lead])) lead = i;
+    const la = lead === null ? null : this.locoA[lead], lu = lead === null ? null : this.locoU[lead];
+    for (let i = 0; i < wl.length; i++) { wl[i] += (TL[i] - wl[i]) * k; if (TL[i] === 0 && wl[i] < 0.002) wl[i] = 0; this.setW(this.locoA[i], wl[i] * base, la); if (!armed) this.setW(this.locoU[i], wl[i] * base * (1 - uw), lu); }
+    for (let i = 0; i < wu.length; i++) { wu[i] += (TU[i] - wu[i]) * k; if (TU[i] === 0 && wu[i] < 0.002) wu[i] = 0; if (armed) this.setW(this.upA[i], wu[i] * base, null); }
     this.mixer.update(dt);
     if (this.dead) return;
     // procedural layer
-    this.lean += ((s.lean || 0) - this.lean) * Math.min(1, dt * 6);
+    this.lean += ((s.lean || 0) - this.lean) * damp(6, dt);
     this.kick = Math.max(0, this.kick - dt * 9);
     if (this.flashT > 0 && (this.flashT -= dt) <= 0) this.flash.visible = false;
     const B = this.bones, L = this.lean;
@@ -207,7 +279,7 @@ export class Character {
       if (this.kick > 0.01) rotWorld(B.spine_03, q1.setFromAxisAngle(right, this.kick * 0.035));
     }
     // left hand onto the handguard whenever the weapon is up (or held at low ready)
-    const wantIK = this.uOne || this.fOne ? 0 : 1; this.ikW += (wantIK - this.ikW) * Math.min(1, dt * 8);
+    const wantIK = this.uOne || this.fOne ? 0 : 1; this.ikW += (wantIK - this.ikW) * damp(8, dt);
     if (this.ikW > 0.5 && this.gun) {
       this.gun.updateWorldMatrix(true, false);
       const t = v3.copy(this.gripL).applyMatrix4(this.gun.matrixWorld); const tx = t.x, ty = t.y, tz = t.z;
