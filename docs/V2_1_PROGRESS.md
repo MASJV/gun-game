@@ -34,8 +34,33 @@ Read this first when resuming, then `git log --oneline`. V2 background: `docs/V2
       * Reloads are staged per category (`rk`: rifle / pistol / shell / bolt): ammunition changes at fraction `ins` of the
         animation (`relIn`), never before; switching away earlier changes nothing. Left hand travels to the magazine well
         with a magazine / shell prop (`view.magProxy`, `magWell`, `lhRest`); shotgun loads per shell and pumps.
-- [ ] Phase 4 — AI refinement
-- [ ] Phase 5 — training range, performance, polish, release to main
+- [x] Phase 4 — AI refinement: guards scatter from grenades landing next to them (`Enemy.evade`, `Grenades.warn`), cover
+      hide time capped so nobody stays tucked indefinitely, reloading in the open seeks cover; capture missions move the
+      protection detail with the HVT (`Security.relocateDetail`) and seal every exit during the escort (`sealExits`).
+      Enemy rifle damage 15.
+- [x] Phase 5 — training range (`src/range.js`, `registerMap()` in world.js, `Player.setSlot()`), tree LOD
+      (`updateLOD`, 16 m cells, 22 / 34 / 52 m by preset, ~60-triangle stand-in), far soldiers skip shadows, audio
+      space tail and varied footsteps, frame pacing (`G.pacing`: EMA / worst, adaptive render scale 0.6-1.0 with
+      hysteresis, off in `?test`), performance overlay (F3), raw mouse input with fallback (`G.lock`), surface-tagged
+      colliders (`mat`) with surface-specific impacts and sounds, ground-plane impacts, per-weapon muzzle flash,
+      headshot cue, low-ammo HUD. Tools: `tools/perf.cjs`, `tools/smoke.cjs`.
 
-## Next steps
-See the end of this file (rewritten at each checkpoint).
+## Verification at release (v2.1.0)
+- `node tools/test.cjs`: 87/87 checks (headless Chromium, software GL).
+- `node tools/perf.cjs` (software-GL counts, not real-GPU frame rates): forest medium 0.43-0.53 M triangles,
+  225-343 draw calls (V2 was ~1.4 M); warehouse medium 0.31-0.35 M.
+- `node tools/smoke.cjs`: all five mission types reach their briefing and start through the real menu; the range loads;
+  no page errors.
+- Not verified: real-GPU frame rate and frame pacing on hardware, audio by ear, a full hand-played mission.
+
+## Known limitations
+- Soldiers are a faceless CC0 mannequin with box gear; guns are low-poly stylised models.
+- Enemies do not fire while moving; enemy reloads reuse the pistol reload clip.
+- The training range's dummies are passive soldiers; there is no score table or timed course.
+- Two parallel agents started on forest LOD and audio in this phase were stopped by the usage limit before they produced
+  anything; both tasks were then done directly on this branch.
+
+## Next steps (if development continues)
+1. Hand-play on real hardware: check adaptive scaling thresholds, enemy lethality per level, mission pacing.
+2. Firing on the move for Tactical / Elite pointmen; a rifle reload clip for enemies.
+3. A timed course and per-weapon stats in the training range.

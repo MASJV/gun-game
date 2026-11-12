@@ -1,5 +1,7 @@
 # SHADOW PROTOCOL — remaining implementation plan (V2.1 release)
 
+**Status: complete — T1–T4 implemented and all release gates passed (see `docs/V2_1_PROGRESS.md`).**
+
 Branch: `v2.1-expansion` (base for all tasks). Release target: merge into `main` once every gate in §4 passes.
 History / architecture: `docs/V2_PROGRESS.md`, `docs/V2_1_PROGRESS.md`. This file lists only what is still open.
 
