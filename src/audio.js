@@ -11,7 +11,14 @@ export class Audio {
     const len = c.sampleRate * 2, buf = (this.nb = c.createBuffer(1, len, c.sampleRate)), d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.amb = [];
+    // shared space tail: two cross-fed delays through a low-pass, so shots and blasts are not bone dry.
+    // ambient() retunes it per map (longer indoors).
+    const tin = (this.tailIn = c.createGain()), d1 = c.createDelay(0.5), d2 = c.createDelay(0.5), lp = c.createBiquadFilter(), fb = (this.tailFb = c.createGain()), wet = c.createGain();
+    d1.delayTime.value = 0.083; d2.delayTime.value = 0.137; lp.type = 'lowpass'; lp.frequency.value = 1700; fb.gain.value = 0.32; wet.gain.value = 0.55;
+    tin.connect(d1); tin.connect(d2); d1.connect(lp); d2.connect(lp); lp.connect(wet); lp.connect(fb); fb.connect(d1); fb.connect(d2); wet.connect(this.master);
+    this._rev = 0;
   }
+  send(g) { if (this._rev > 0 && this.tailIn) { const r = this.ctx.createGain(); r.gain.value = this._rev; g.connect(r); r.connect(this.tailIn); } }
   out(pan) {
     if (!pan || !this.ctx.createStereoPanner) return this.master;
     const p = this.ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); p.connect(this.master); return p;
@@ -22,7 +29,7 @@ export class Audio {
     s.buffer = this.nb; s.loop = true; fl.type = type; fl.Q.value = q;
     fl.frequency.setValueAtTime(f, t); if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur);
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    s.connect(fl); fl.connect(g); g.connect(this.out(pan)); s.start(t, Math.random()); s.stop(t + dur + 0.02);
+    s.connect(fl); fl.connect(g); g.connect(this.out(pan)); this.send(g); s.start(t, Math.random()); s.stop(t + dur + 0.02);
   }
   tone(freq, dur, { f2, type = 'sine', vol = 0.3, pan = 0, at = 0 } = {}) {
     const c = this.ctx; if (!c) return;
@@ -32,6 +39,9 @@ export class Audio {
     o.connect(g); g.connect(this.out(pan)); o.start(t); o.stop(t + dur + 0.02);
   }
   shot(kind, sup) {
+    this._rev = sup ? 0.06 : 0.3; this._shot(kind, sup); this._rev = 0;
+  }
+  _shot(kind, sup) {
     if (sup) { this.noise(0.09, { f: 1700, f2: 500, q: 1.2, type: 'bandpass', vol: kind === 'dmr' ? 0.5 : 0.36 }); this.tone(170, 0.05, { f2: 70, vol: 0.2, type: 'triangle' }); this.click(0.22); return; }
     if (kind === 'ak') { this.noise(0.26, { f: 2600, f2: 300, vol: 1.0 }); this.tone(130, 0.2, { f2: 38, vol: 0.9, type: 'triangle' }); this.noise(0.05, { f: 5000, type: 'highpass', vol: 0.35 }); }
     else if (kind === 'm4') { this.noise(0.17, { f: 4200, f2: 600, vol: 0.8 }); this.tone(190, 0.12, { f2: 60, vol: 0.55, type: 'triangle' }); this.noise(0.04, { f: 6500, type: 'highpass', vol: 0.4 }); }
@@ -42,6 +52,9 @@ export class Audio {
     else { this.noise(0.11, { f: 3400, f2: 700, vol: 0.7 }); this.tone(260, 0.09, { f2: 90, vol: 0.5, type: 'square' }); }
   }
   enemyShot(dist, pan) {
+    this._rev = 0.4; this._enemyShot(dist, pan); this._rev = 0;
+  }
+  _enemyShot(dist, pan) {
     const v = Math.max(0.05, 0.75 / (1 + dist * 0.07));
     this.noise(0.22, { f: Math.max(500, 2600 - dist * 35), f2: 250, vol: v, pan }); this.tone(120, 0.16, { f2: 45, vol: v * 0.7, pan, type: 'triangle' });
   }
@@ -61,6 +74,9 @@ export class Audio {
   stim() { this.noise(0.25, { f: 5000, f2: 1500, type: 'highpass', vol: 0.2 }); this.tone(440, 0.3, { f2: 880, vol: 0.12, type: 'sine', at: 0.1 }); }
   bounce(v = 0.3) { this.tone(900, 0.04, { f2: 500, vol: v, type: 'square' }); this.noise(0.03, { f: 2500, type: 'bandpass', q: 4, vol: v }); }
   explosion(dist) {
+    this._rev = 0.6; this._explosion(dist); this._rev = 0;
+  }
+  _explosion(dist) {
     const v = Math.max(0.15, 1.4 / (1 + dist * 0.05));
     this.noise(0.9, { f: 900, f2: 60, vol: v }); this.tone(70, 0.7, { f2: 22, vol: v, type: 'triangle' }); this.noise(1.6, { f: 300, f2: 60, vol: v * 0.35, at: 0.15 });
   }
@@ -76,7 +92,7 @@ export class Audio {
     g.gain.setValueAtTime(0.035, c.currentTime + 14); g.gain.linearRampToValueAtTime(0.012, c.currentTime + 20); this.sir = [o, l];
   }
   click(v = 0.5, at = 0) { this.noise(0.035, { f: 3200, type: 'bandpass', q: 5, vol: v, at }); this.tone(900, 0.02, { vol: v * 0.2, type: 'square', at }); }
-  step(v = 0.2) { this.noise(0.09, { f: 500 + Math.random() * 250, f2: 150, vol: v }); }
+  step(v = 0.2) { const k = 0.8 + Math.random() * 0.4; this.noise(0.07 + Math.random() * 0.04, { f: (420 + Math.random() * 330) * k, f2: 120 + Math.random() * 60, vol: v * k }); if (Math.random() < 0.4) this.noise(0.03, { f: 2200, type: 'bandpass', q: 2, vol: v * 0.25, at: 0.02 }); } // never two identical steps
   land() { this.noise(0.16, { f: 420, f2: 90, vol: 0.45 }); }
   hit(kill) { this.tone(kill ? 520 : 1500, kill ? 0.16 : 0.05, { f2: kill ? 240 : 1100, vol: 0.22, type: 'square' }); }
   hurt() { this.noise(0.18, { f: 700, f2: 120, vol: 0.7 }); this.tone(90, 0.2, { f2: 50, vol: 0.5 }); }
@@ -88,6 +104,7 @@ export class Audio {
   lose() { [330, 262, 196, 131].forEach((f, i) => this.tone(f, 0.6, { vol: 0.25, type: 'sawtooth', at: i * 0.22 })); }
   ambient(kind) {
     const c = this.ctx; if (!c) return;
+    if (this.tailFb) this.tailFb.gain.value = kind === 'warehouse' ? 0.5 : 0.26; // hall rings longer than open woodland
     this.stopAmbient();
     const g = c.createGain(); g.gain.value = 0; g.gain.linearRampToValueAtTime(1, c.currentTime + 2); g.connect(this.master);
     const s = c.createBufferSource(), f = c.createBiquadFilter(), ng = c.createGain(), lfo = c.createOscillator(), lg = c.createGain();
