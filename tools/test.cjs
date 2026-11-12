@@ -28,8 +28,8 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       const G = window.__SP;
       if (G.state === 'playing') press('Escape');
       if (G.state === 'paused') document.getElementById('pmenu').click(); else if (G.state !== 'menu') document.getElementById('emenu').click();
-      G.sel.map = map; G.sel.ai = ai; const L = G.loadout; L.primary = load.primary || 'm4'; L.secondary = load.secondary || 'pistol'; L.kit = load.kit || 'assault';
-      for (const id in L.att) Object.assign(L.att[id], { optic: id === 'dmr' ? 'scope' : 'iron', muzzle: false, grip: false, laser: false }, (load.att || {})[id] || {});
+      G.sel.map = map; G.sel.ai = ai; G.sel.layout = load.mission ? null : 'classic'; G.sel.mission = load.mission || 'intel'; G.sel.length = load.length || 'quick'; G.sel.seed = load.seed ?? null; const L = G.loadout; L.primary = load.primary || 'm4'; L.secondary = load.secondary || 'pistol'; L.kit = load.kit || 'assault';
+      for (const id in L.att) Object.assign(L.att[id], { optic: id === 'dmr' ? 'scope' : id === 'sniper' ? 'vscope' : 'iron', muzzle: false, grip: false, laser: false }, (load.att || {})[id] || {});
       document.getElementById('start').click();
     }, [map, ai, load]);
   };
@@ -38,7 +38,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
   await run('menu', async () => {
     const m = await p.evaluate(() => { document.querySelector('[data-tab="loadout"]').click(); document.querySelector('.opts[data-k="primary"] [data-v="ak"]').click(); document.querySelector('#optic [data-v="holo"]').click(); document.querySelector('#atts [data-v="muzzle"]').click();
       const G = window.__SP; return { tabs: document.querySelectorAll('.nav').length, ai: [...document.querySelectorAll('.opts[data-k="ai"] .opt')].map((o) => o.dataset.v), primary: G.loadout.primary, att: G.loadout.att.ak, sum: document.getElementById('losum').textContent }; });
-    check('menu: PLAY / LOADOUT / SETTINGS / CONTROLS tabs', m.tabs === 4);
+    check('menu: PLAY / LOADOUT / TRAINING / SETTINGS / CONTROLS tabs', m.tabs === 5);
     check('menu: exactly Recruit / Tactical / Elite Squad', m.ai.join() === 'recruit,tactical,elite');
     check('loadout: weapon + optic + suppressor selection is stored', m.primary === 'ak' && m.att.optic === 'holo' && m.att.muzzle === true, m.sum);
   });
@@ -84,9 +84,45 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       const exp = { ak: [5, 6], m4: [6, 8], dmr: [1, 1], pistol: [1, 1], smg: [7, 9], shotgun: [1, 1] };
       check(`weapons: ${prim} fires at its own cadence, recoils, reloads`, o.fired1 >= exp[prim][0] && o.fired1 <= exp[prim][1] && o.recoil && o.reloading && o.mag1 === { ak: 30, m4: 30, dmr: 10 }[prim], o);
       check(`weapons: ${sec} fires, reloads, switching and knife slot work`, o.cur === 1 && o.fired2 >= exp[sec][0] && o.fired2 <= exp[sec][1] && o.mag2 === { pistol: 15, smg: 30, shotgun: 6 }[sec] && o.knife === 'knife', [o.fired2, o.mag2, o.knife]);
-      check(`weapons: ${prim} ADS zoom matches optic`, o.ads === 1 && o.fov === { ak: 55, m4: 58, dmr: 19 }[prim] && o.scoped === (prim === 'dmr'), [o.fov, o.scoped]);
+      check(`weapons: ${prim} ADS zoom matches optic`, o.ads === 1 && o.fov === { ak: 55, m4: 58, dmr: 22 }[prim] && o.scoped === (prim === 'dmr'), [o.fov, o.scoped]);
       if (prim === 'm4') check('attachments: suppressor cuts the noise radius', o.noise < 15, o.noise);
     }
+  });
+
+  await run('sniper', async () => {
+    await start('warehouse', 'tactical', { primary: 'sniper', secondary: 'shotgun' });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}; const e = solo(0); calm(); const s = P.slots[0];
+      const put = (x, z) => { e.release(); e.pos.set(x, 0, z); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.hp = 100; e.dead = false; e.sync(); e.ch.refresh(); };
+      const wheel = (dy) => { const ev = new WheelEvent('wheel', { deltaY: dy, cancelable: true }); window.dispatchEvent(ev); return ev.defaultPrevented; };
+      P.pos.set(40, 0, 12); P.yaw = 0; P.pitch = 0; put(40, -4); sim(0.4);
+      o.id = s.id; o.mag = s.st.mag; o.zoom0 = s.zoom; const thr0 = P.throwSel;
+      o.hipWheel = [wheel(-100), s.zoom]; // not aiming: the wheel must not zoom
+      G.inp.rmb = true; sim(0.8); o.scoped = P.scoped; o.scopeShown = getComputedStyle(document.getElementById('scope')).display;
+      const fovAt = () => +G.camera.fov.toFixed(2), want = (z) => +((2 * Math.atan(Math.tan((G.fov * Math.PI) / 360) / z) * 180) / Math.PI).toFixed(2);
+      o.fov4 = [fovAt(), want(4)]; const steps = []; for (let i = 0; i < 4; i++) { o.prevented = wheel(-100); steps.push(s.zoom); } o.steps = steps; sim(0.2); o.fov5 = [fovAt(), want(5)];
+      for (let i = 0; i < 40; i++) wheel(-100); o.max = s.zoom; sim(0.2); o.fov10 = [fovAt(), want(10)]; o.hud = document.getElementById('zoomv').textContent;
+      // sensitivity scales with magnification
+      const y0 = P.yaw; G.inp.mx = 100; sim(0.02); const dz = Math.abs(P.yaw - y0); o.sensRatio = +(dz / (100 * 0.0022 * G.sens)).toFixed(3);
+      for (let i = 0; i < 60; i++) wheel(100); o.min = s.zoom;
+      // scoped shot: lethal to the body with a clear line, bolt blocks the next round, wall still stops it
+      P.yaw = 0; P.pitch = Math.atan2(1.15 - 1.62, 16); P.swT2 = 0; sim(0.05); G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; o.kill = e.dead; o.magAfter = s.mag; o.bolt = P.boltT > 0.8;
+      G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.3); G.inp.lmb = false; o.blockedByBolt = s.mag === o.magAfter; sim(1.2);
+      put(19, 0); P.pos.set(26, 0, 0); P.yaw = Math.PI / 2; P.pitch = Math.atan2(1.15 - 1.62, 7); sim(0.3); G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(0.2); o.wall = 100 - e.hp; G.inp.rmb = false; sim(0.5);
+      // staged reload: nothing changes before the magazine goes in; switching away before that leaves the weapon as it was
+      const tot0 = s.mag + s.reserve, m0 = s.mag; P.reload(); sim(s.st.reload * 0.4); o.early = [s.mag === m0, s.reserve + s.mag === tot0]; press('Digit2'); sim(0.8); press('Digit1'); sim(0.8); o.cancel = [s.mag === m0, s.mag + s.reserve === tot0];
+      P.reload(); sim(s.st.reload * (s.st.ins + 0.05)); o.inserted = s.mag === 5; sim(2); o.done = [!P.reloading, s.mag, s.mag + s.reserve === tot0];
+      // shotgun: one shell at a time, firing interrupts after a shell is in
+      press('Digit2'); sim(0.8); const g = P.slots[1]; g.mag = 1; const r0 = g.reserve; P.reload(); sim(0.5); o.shell1 = g.mag; sim(0.3); o.shell2 = g.mag; sim(0.5); const m2 = g.mag; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.1); G.inp.lmb = false; const stopped = !P.reloading, m3 = g.mag; sim(0.6); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.1); G.inp.lmb = false;
+      o.interrupt = [m2, stopped, g.mag === m3 - 1]; o.conserve = g.mag + g.reserve + 1 === 1 + r0;
+      return o;
+    });
+    check('sniper: bolt-action primary with 5 rounds; one scoped body hit is lethal; the bolt gates the next shot', o.id === 'sniper' && o.mag === 5 && o.kill && o.magAfter === 4 && o.bolt && o.blockedByBolt, [o.kill, o.magAfter, o.bolt, o.blockedByBolt]);
+    check('optics: wheel zooms only while aiming, in 0.25x steps, clamped to 4-10x', o.hipWheel[1] === 4 && o.steps.join() === '4.25,4.5,4.75,5' && o.max === 10 && o.min === 4 && o.prevented === true, [o.hipWheel, o.steps, o.min, o.max, o.prevented]);
+    check('optics: camera FOV follows true magnification and the scope HUD shows it', Math.abs(o.fov4[0] - o.fov4[1]) < 0.3 && Math.abs(o.fov5[0] - o.fov5[1]) < 0.3 && Math.abs(o.fov10[0] - o.fov10[1]) < 0.3 && o.scoped && o.scopeShown === 'block' && /10\.00/.test(o.hud), [o.fov4, o.fov5, o.fov10, o.hud]);
+    check('optics: mouse sensitivity is reduced in proportion to zoom; scoped rounds still stop at walls', o.sensRatio < 0.15 && o.wall === 0, [o.sensRatio, o.wall]);
+    check('reload: ammunition changes at the insert stage, cancelling earlier changes nothing, totals are conserved', o.early[0] && o.early[1] && o.cancel[0] && o.cancel[1] && o.inserted && o.done[0] && o.done[1] === 5 && o.done[2], [o.early, o.cancel, o.inserted, o.done]);
+    check('reload: shotgun loads shell by shell and can be interrupted by firing', o.shell1 === 2 && o.shell2 === 2 && o.interrupt[0] >= 3 && o.interrupt[1] && o.interrupt[2] && o.conserve, [o.shell1, o.shell2, o.interrupt, o.conserve]);
   });
 
   await run('combat', async () => {
@@ -97,7 +133,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       // body shot vs head shot through the animated hit zones
       P.pos.set(40, 0, 12); P.yaw = 0; P.pitch = 0; place(40, 0, 0); sim(0.5); G.inp.rmb = true; sim(0.5);
       P.pitch = -0.045; sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.2); o.body = 100 - e.hp;
-      e.hp = 100; e.state = 'PATROL'; e.waitT = 1e9; e.release(); place(40, 0, 0); calm(); e.stun = 0; sim(0.6);
+      e.hp = 100; e.set('PATROL'); e.wantCrouch = false; e.waitT = 1e9; e.release(); place(40, 0, 0); calm(); e.stun = 0; sim(0.6);
       e.ch.refresh(); const h = e.ch.eye(new G.v1.constructor()); P.pitch = Math.atan2(h.y + 0.03 - G.camera.position.y, 12); sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.1); o.head = e.dead ? 'kill' : 100 - e.hp; G.inp.rmb = false;
       return o;
     });
@@ -112,13 +148,51 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('melee: quick knife from behind is a silent takedown', k.backstab && k.cur === 0 && k.knifeKills === 1, k);
   });
 
+  await run('ballistics', async () => {
+    await start('forest', 'tactical', { primary: 'dmr', secondary: 'shotgun' });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}; const e = solo(0); calm(); P.hp = 100;
+      const V = G.v1.constructor, put = (x, z) => { e.release(); e.pos.set(x, 0, z); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.hp = 100; e.sync(); e.ch.refresh(); };
+      const shootAt = (slot, n = 1) => { if (P.cur !== slot) { press('Digit' + (slot + 1)); sim(0.7); } const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z; P.yaw = Math.atan2(-dx, -dz); P.pitch = Math.atan2(1.1 - 1.62, Math.hypot(dx, dz)); sim(0.2);
+        for (let i = 0; i < n; i++) { P.slot.mag = Math.max(P.slot.mag, 1); P.reloading = false; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(P.slot.id === 'dmr' ? 0.4 : 1); } return 100 - e.hp; };
+      // 1. chain-link fence between shooter and target (fence line z = 3.5, x 3..18.5): visible, but bullets stop
+      put(10, 0.5); P.pos.set(10, 0, 8); o.seeThroughFence = G.los(10, 1.6, 8, 10, 1.2, 0.5); o.fenceRifle = shootAt(0, 2); o.fenceShotgun = shootAt(1, 1);
+      // 2. hut wall (command hut south wall z = -16.5)
+      put(-13, -18.5); P.pos.set(-13, 0, -13); o.wall = shootAt(0, 2); G.inp.rmb = true; sim(0.6); o.scopedWall = shootAt(0, 1); G.inp.rmb = false; sim(0.4);
+      // 3. truck and crate as cover
+      put(-11.6, -6); P.pos.set(-5, 0, -6); o.truck = shootAt(0, 2);
+      put(-2, -22.3); P.pos.set(-2, 0, -17); o.crate = shootAt(1, 1);
+      // 4. control: same weapons with a clear line do damage
+      put(0, 20); e.hp = 5000; P.pos.set(0, 0, 25); o.clearRifle = 5000 - e.hp > 0; shootAt(0, 3); o.clearRifle = e.hp < 5000; put(0, 20); e.stun = 9; e.hp = 5000; P.pos.set(0, 0, 23.5); const sm0 = P.slots[1].mag, sh0 = G.stats.shots; shootAt(1, 2); o.clearShotgun = e.hp < 5000; { const r0 = G.trace(G.camera.position, P.fwd, 60, 'player'), m = P.muzzleW, c = G.camera.position; o.dbg2 = [r0.kind, +r0.d.toFixed(2), r0.part, [m.x - c.x, m.y - c.y, m.z - c.z].map((v) => +v.toFixed(2)), [P.pos.x, P.pos.z, P.yaw, P.pitch].map((v) => +v.toFixed(2)), [e.pos.x, e.pos.z], e.ch.root.position.z]; } o.dbg = [P.cur, sm0, P.slots[1].mag, G.stats.shots - sh0, +P.pumpT.toFixed(2), +P.fireT.toFixed(2), P.reloading, !!P.use, P.swT, e.hp]; e.stun = 0; e.hp = 100;
+      // 5. muzzle obstruction: the camera sees past a corner but the muzzle is behind it -> the round hits the corner
+      put(0, 20); e.hp = 100; P.pos.set(0, 0, 28); press('Digit1'); sim(0.7); P.yaw = 0; P.pitch = -0.065; sim(0.3);
+      const m = P.muzzleW, col = { x0: m.x - 0.06, x1: m.x + 0.5, y0: 0, y1: 3, z0: m.z - 0.5, z1: m.z + 0.12, solid: false, sight: false, bullet: true }; G.world.colliders.push(col);
+      const ct = G.trace(G.camera.position, P.fwd, 30, 'player'), camClear = ct.kind === 'enemy' || !ct.wh || !!ct.wh.c.ground; P.slot.mag = 5; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(0.5);
+      o.muzzleBlocked = { camClear, dmg: 100 - e.hp }; G.world.colliders.splice(G.world.colliders.indexOf(col), 1);
+      // 6. enemy rounds obey the same resolver: wall, fence
+      const fireAt = () => { e.seeing = true; e.seeBody = true; e.los = true; e.pd = Math.hypot(P.pos.x - e.pos.x, P.pos.z - e.pos.z); e.yaw = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.sync(); e.ch.aimW = 1; for (let i = 0; i < 20; i++) e.ch.update(1 / 60, { speed: 0, aim: true }); let fired = 0; for (let i = 0; i < 40; i++) { e.ammo = 30; e.seenT = 5; if (e.fire(false)) fired++; } return fired; };
+      P.hp = 100; put(-13, -18.5); P.pos.set(-13, 0, -13); o.enemyWall = [fireAt(), 100 - P.hp];
+      P.hp = 100; put(10, 0.5); P.pos.set(10, 0, 8); o.enemyFence = [fireAt(), 100 - P.hp];
+      P.hp = 1e5; put(0, 20); P.pos.set(0, 0, 25.5); o.enemyClear = [fireAt(), 1e5 - P.hp > 0];
+      // direct resolver calls straight through geometry never reach the far side
+      const d = new V(0, 0, -1); o.resolver = ['player', e].map((sh) => { const r = G.trace(new V(-13, 1.2, -13), d, 30, sh); return r.kind; });
+      return o;
+    });
+    check('ballistics: chain-link fence is see-through but stops rifle and shotgun rounds', o.seeThroughFence && o.fenceRifle === 0 && o.fenceShotgun === 0, [o.seeThroughFence, o.fenceRifle, o.fenceShotgun]);
+    check('ballistics: walls, vehicles and crates stop rounds (also when scoped)', o.wall === 0 && o.scopedWall === 0 && o.truck === 0 && o.crate === 0, [o.wall, o.scopedWall, o.truck, o.crate]);
+    check('ballistics: the same weapons hit with a clear line of fire', o.clearRifle && o.clearShotgun, [o.clearRifle, o.clearShotgun, o.dbg, o.dbg2]);
+    check('ballistics: an obstructed muzzle cannot shoot past cover the camera sees over', o.muzzleBlocked.camClear && o.muzzleBlocked.dmg === 0, o.muzzleBlocked);
+    check('ballistics: enemy fire is refused / stopped by walls and fences, lands when clear', o.enemyWall[0] === 0 && o.enemyWall[1] === 0 && o.enemyFence[0] === 0 && o.enemyFence[1] === 0 && o.enemyClear[0] > 0 && o.enemyClear[1], [o.enemyWall, o.enemyFence, o.enemyClear]);
+    check('ballistics: resolver stops at the wall for both player and enemy shooters', o.resolver.every((k) => k === 'world'), o.resolver);
+  });
+
   await run('equipment', async () => {
     await start('warehouse', 'tactical', { kit: 'recon' });
     const o = await p.evaluate(() => {
       const G = window.__SP, P = G.player, o = {}; calm(); const [a, b2, c] = G.enemies; G.enemies.slice(3).forEach((e) => { e.dead = true; e.found = true; e.ch.root.visible = false; });
       const hold = (e, x, z) => { e.pos.set(x, 0, z); e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.yaw = e.baseYaw = Math.PI; e.sync(); e.ch.refresh(); };
       // frag: a is in the open 3 m from the blast, b is behind a shipping container
-      hold(a, 30, -15); hold(b2, 39, -15); hold(c, 40, 20); P.pos.set(30, 0, 14); P.hp = 100;
+      hold(a, 30, -15); a.stun = 6; hold(b2, 39, -15); hold(c, 40, 20); // a is pinned: guards who can move now run from grenades P.pos.set(30, 0, 14); P.hp = 100;
       G.spawnGrenade('frag', new G.v1.constructor(33, 0.2, -15), new G.v1.constructor(0, 0, 0), 'player'); sim(3.2);
       o.fragOpen = a.dead || a.hp < 40; o.fragCovered = b2.hp; o.secAfterBlast = G.sec.level;
       // flash: c faces the flash and is stunned
@@ -222,6 +296,24 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('elite: bounding — may move while covered, must wait when nobody covers', o.mayMoveCovered === true && o.mayMoveAlone === false, [o.mayMoveCovered, o.mayMoveAlone]);
   });
 
+  await run('refine', async () => {
+    await start('warehouse', 'tactical');
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}, V = G.v1.constructor; calm(); P.pos.set(44, 0, 28); P.hp = 1e6;
+      const [a, b2] = G.enemies; G.enemies.slice(2).forEach((e) => { e.dead = true; e.found = true; });
+      [a, b2].forEach((e, i) => { e.release(); e.pos.set(30 + i * 2, 0, -15); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.sync(); e.ch.refresh(); });
+      G.spawnGrenade('frag', new V(31, 1.2, -14.5), new V(0, 0, 0), 'player'); let moved = 0; sim(2.6, () => { if (a.state === 'MOVE' || b2.state === 'MOVE') moved++; });
+      o.evadeFrames = moved; sim(1); o.dist = [a, b2].map((e) => +Math.hypot(e.pos.x - 31, e.pos.z + 14.5).toFixed(1)); o.alive = [a, b2].filter((e) => !e.dead).length;
+      // a guard in cover with a stale contact does not stay tucked forever
+      const e = a.dead ? b2 : a; e.percT = 1e9; e.hasLkp = true; e.lkpAge = 1; e.holdPost = false;
+      e.release(); e.pos.set(8, 0, -15.5); e.sync(); e.lkp.set(-3, 0, 2); const ok = e.takeCover('hold'); let t = 0, left = -1; sim(40, () => { t += 1 / 60; e.lkpAge = Math.min(e.lkpAge, 6); if (left < 0 && e.state === 'COVER' && e.phase === 'hide') left = -2; if (left === -2 && (e.state !== 'COVER' || e.phase !== 'hide')) left = t; return left < 0; });
+      o.cover = ok; o.leftHideAfter = +left.toFixed(1);
+      return o;
+    });
+    check('ai: guards scatter from a grenade that lands next to them', o.evadeFrames > 30 && o.dist.some((d) => d > 6), o);
+    check('ai: a guard does not stay hidden indefinitely', o.cover && o.leftHideAfter > 0 && o.leftHideAfter < 25, [o.cover, o.leftHideAfter]);
+  });
+
   await run('traversal', async () => {
     await start('forest', 'tactical');
     const o = await p.evaluate(() => {
@@ -270,28 +362,178 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
   });
 
   await run('mission', async () => {
-    for (const map of ['forest', 'warehouse']) {
-      await start(map, 'recruit');
-      const o = await p.evaluate(() => {
-        const G = window.__SP, P = G.player, W = G.world, o = {}; G.enemies.forEach((e) => { e.dead = true; }); const n0 = G.enemies.length;
-        const ob = W.objective.pos; P.pos.set(ob[0] + (W.id === 'forest' ? 0 : 1.3), 0, ob[2] + (W.id === 'forest' ? 1.3 : 0)); sim(0.1);
-        o.prompt = document.getElementById('prompt').textContent;
-        if (W.objective.hold) { key('KeyE', true); sim(3.2); key('KeyE', false); } else { G.inp.e = true; sim(0.1); }
-        o.stage = G.stage; o.sec = G.sec.level; sim(20); o.rein = G.enemies.length - n0;
-        const ex = W.extraction.pos; P.pos.set(ex[0], 0, ex[2]); sim(0.2); o.state = G.state; o.end = document.getElementById('endt').textContent;
-        return o;
-      });
-      check(`mission/${map}: objective -> lockdown -> extraction completes`, o.stage === 1 && o.sec === 3 && o.rein === 2 && o.state === 'won', o);
+    // helper living in the page: play a generated mission to the end by walking the objective list
+    await p.evaluate(() => {
+      const G = window.__SP;
+      window.playMission = (opts = {}) => {
+        const P = G.player, Mi = G.mission, W = G.world, log = { stages: Mi.def.stages.map((s) => s.kind), zones: Mi.def.stages.map((s) => s.anchors[0].id), entry: Mi.def.entry.id, exit: Mi.def.exit.id, valid: G.missionCheck(), fb: !!Mi.def.fallbackUsed, lines0: Mi.lines().map((l) => l.state).join(',') };
+        G.enemies.forEach((e) => { e.dead = true; e.found = true; });
+        let guard = 0;
+        while (!Mi.complete && G.state === 'playing' && guard++ < 12) {
+          const s = Mi.stage;
+          if (s.civ) { const c = s.civRef; if (c.state === 'flee') sim(25, () => c.state === 'flee'); P.pos.set(c.pos.x + 1.4, c.pos.y, c.pos.z); P.yaw = Math.PI / 2; sim(0.6); key('KeyE', true); sim(2); key('KeyE', false); log.civ = c.state; }
+          else for (const it of Mi.items.filter((x) => x.stage === Mi.i)) { if (Mi.stage !== s) break; const a = s.anchors[it.k].stand; P.pos.set(a[0], W.nav.height(a[0], a[1]), a[1]); sim(0.1); log.prompt = document.getElementById('prompt').textContent; if (s.hold) { key('KeyE', true); sim(s.hold + 0.4); key('KeyE', false); } else { G.inp.e = true; sim(0.1); } }
+        }
+        log.done = Mi.complete; log.sec = G.sec.level; log.comms = G.sec.commsDown; log.panel = G.sec.panelDown; log.power = !!W.powerOff;
+        if (Mi.civ && !opts.noEscort) { // the escort must actually follow over a real route
+          const c = Mi.civ, a = Mi.def.stages[0].anchors[0].posts[0]; P.pos.set(a[0], W.nav.height(a[0], a[1]), a[1]); sim(30, () => Math.hypot(c.pos.x - P.pos.x, c.pos.z - P.pos.z) > 3); log.followed = +Math.hypot(c.pos.x - P.pos.x, c.pos.z - P.pos.z).toFixed(1);
+          const ex = Mi.def.exit.pos; P.pos.set(ex[0], 0, ex[2]); sim(0.3); log.blockedWithoutCiv = G.state === 'playing'; c.pos.set(ex[0] + 1.5, 0, ex[2]); c.path = null; sim(0.3);
+        } else { const ex = Mi.def.exit.pos; P.pos.set(ex[0], 0, ex[2]); sim(0.3); }
+        log.state = G.state; log.end = document.getElementById('endt').textContent;
+        return log;
+      };
+    });
+    // every mission type x supported length x both maps, several seeds: valid, right number of objectives, completes
+    const combos = { intel: ['quick', 'standard', 'extended'], capture: ['quick', 'standard', 'extended'], sabotage: ['quick', 'standard', 'extended'], rescue: ['quick', 'standard', 'extended'], multi: ['standard', 'extended'] };
+    const n = { quick: 1, standard: 2, extended: 3 }; let bad = [], count = 0, fb = 0; const kinds = new Set();
+    for (const map of ['forest', 'warehouse']) for (const type in combos) for (const length of combos[type]) for (const seed of [11, 202]) {
+      await start(map, 'recruit', { mission: type, length, seed });
+      const r = await p.evaluate(() => playMission());
+      count++; r.stages.forEach((k) => kinds.add(k)); if (r.fb) fb++;
+      const ok = r.valid === null && r.stages.length === n[length] && new Set(r.zones).size === r.zones.length && r.done && r.state === 'won' && (!('followed' in r) || (r.followed < 4 && r.blockedWithoutCiv));
+      if (!ok) bad.push({ map, type, length, seed, r });
     }
+    check(`missions: ${count} generated missions (all types, lengths, both maps) are valid and completable`, bad.length === 0, bad.slice(0, 2));
+    check('missions: no fallback layouts needed; every stage kind appears', fb === 0 && ['retrieve', 'hack', 'keycard', 'search', 'sab:comms', 'sab:security', 'sab:power', 'sab:charge', 'capture', 'rescue'].every((k) => kinds.has(k)), [fb, [...kinds]]);
+    // only valid type/length combinations are offered
+    const menu = await p.evaluate(() => { const G = window.__SP; document.getElementById('emenu').click(); document.querySelector('[data-tab="play"]').click(); document.querySelector('.opts[data-k="mission"] [data-v="multi"]').click(); const a = [...document.querySelectorAll('.opts[data-k="length"] .opt')].map((o) => o.dataset.v); document.querySelector('.opts[data-k="mission"] [data-v="capture"]').click(); return [a, [...document.querySelectorAll('.opts[data-k="length"] .opt')].map((o) => o.dataset.v), document.querySelectorAll('.opts[data-k="mission"] .opt').length]; });
+    check('missions: menu offers 5 mission types and only valid lengths', menu[2] === 5 && menu[0].join() === 'standard,extended' && menu[1].join() === 'quick,standard,extended', menu);
+    // anti-repetition: same map + mission type replayed with fresh random seeds
+    for (const map of ['forest', 'warehouse']) {
+      const zones = [], entries = [];
+      await p.evaluate(() => { localStorage.removeItem('sp21_history'); window.__SP.hist = {}; });
+      for (let i = 0; i < 7; i++) { await start(map, 'recruit', { mission: 'intel', length: 'quick' }); const r = await p.evaluate(() => { const d = window.__SP.mission.def; return [d.primary.id, d.entry.id, d.exit.id]; }); zones.push(r[0]); entries.push(r[1]); }
+      const immediate = zones.some((z, i) => i && z === zones[i - 1]), firstRepeat = zones.findIndex((z, i) => zones.indexOf(z) < i), entryRepeat = entries.some((e, i) => i && e === entries[i - 1]);
+      check(`missions/${map}: objective zone never repeats back-to-back and rotates through zones`, !immediate && (firstRepeat === -1 || firstRepeat >= 4) && new Set(zones).size >= 4 && !entryRepeat, [zones, entries]);
+    }
+    // deterministic seeds reproduce the same layout
+    const same = [];
+    for (let i = 0; i < 2; i++) { await p.evaluate(() => { window.__SP.hist = {}; }); await start('warehouse', 'recruit', { mission: 'multi', length: 'extended', seed: 777 }); same.push(await p.evaluate(() => { const d = window.__SP.mission.def; return d.stages.map((s) => s.kind + '@' + s.anchors.map((a) => a.id).join('+')).join('>') + '|' + d.entry.id + '|' + d.exit.id; })); }
+    check('missions: a seed reproduces the same mission', same[0] === same[1], same[0]);
+    // HVT: relocates when the site is alerted, surrenders up close, killing him fails the mission
+    await start('warehouse', 'recruit', { mission: 'capture', length: 'quick', seed: 5 });
+    const hv = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, c = G.mission.civ, o = {}; G.enemies.forEach((e) => { e.dead = true; e.found = true; }); P.pos.set(44, 0, 28);
+      o.kind = c.kind; o.start = c.state; const p0 = [c.pos.x, c.pos.z]; G.sec.level = 2; sim(30, () => c.state !== 'cower'); o.afterAlert = c.state; o.movedDist = +Math.hypot(c.pos.x - p0[0], c.pos.z - p0[1]).toFixed(0);
+      o.markerStillAtOld = Math.hypot(G.mission.focus()[0] - c.pos.x, G.mission.focus()[2] - c.pos.z) > 10; // no live tracking of the target
+      P.pos.set(c.pos.x + 1.5, c.pos.y, c.pos.z); sim(0.5); o.near = c.state; c.damage(500); sim(0.2); o.state = G.state; o.sub = document.getElementById('ends').textContent;
+      return o;
+    });
+    check('capture: the target relocates on alert, surrenders up close, and must be taken alive', hv.kind === 'hvt' && hv.start === 'idle' && hv.afterAlert === 'cower' && hv.movedDist > 10 && hv.markerStillAtOld && hv.near === 'surrender' && hv.state === 'dead' && /TARGET WAS KILLED/.test(hv.sub), hv);
+    await start('forest', 'recruit', { mission: 'rescue', length: 'quick', seed: 9 });
+    const hs = await p.evaluate(() => { const G = window.__SP, c = G.mission.civ, o = { kind: c.kind, start: c.state }; const guards = G.enemies.filter((e) => e.duty === 'objective' && Math.hypot(e.pos.x - c.pos.x, e.pos.z - c.pos.z) < 16).length; o.guards = guards; c.damage(500); sim(0.2); o.state = G.state; o.sub = document.getElementById('ends').textContent; return o; });
+    check('rescue: the hostage is guarded from the start and must survive', hs.kind === 'hostage' && hs.start === 'held' && hs.guards >= 2 && hs.state === 'dead' && /HOSTAGE WAS KILLED/.test(hs.sub), hs);
+    // mission-aware security: the detail follows a relocating HVT; exits are sealed during the escort
+    await start('warehouse', 'tactical', { mission: 'capture', length: 'quick', seed: 21 });
+    const ms = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, c = G.mission.civ, o = {}; calm(); P.pos.set(G.mission.def.entry.x, 0, G.mission.def.entry.z); P.hp = 1e6;
+      const fb = G.mission.def.fallback; G.sec.level = 2; G.enemies.forEach((e) => { e.alerted = true; }); sim(45, () => c.state !== 'cower');
+      o.detailNearNewSpot = G.enemies.filter((e) => !e.dead && e.duty === 'objective' && Math.hypot(e.pos.x - fb.at[0], e.pos.z - fb.at[2]) < 16).length; o.civ = c.state;
+      P.pos.set(c.pos.x + 1.4, c.pos.y, c.pos.z); sim(0.6); key('KeyE', true); sim(2); key('KeyE', false); o.follow = c.state; sim(25);
+      o.exitGuards = G.world.exits.filter((x) => G.enemies.some((e) => !e.dead && Math.hypot(e.pos.x - x.pos[0], e.pos.z - x.pos[2]) < 12)).length; o.exits = G.world.exits.length;
+      return o;
+    });
+    check('security: the protection detail relocates with the HVT and exits are sealed during the escort', ms.civ === 'cower' && ms.detailNearNewSpot >= 2 && ms.follow === 'follow' && ms.exitGuards >= 2, ms);
+    // sabotage changes how security works
+    await start('warehouse', 'tactical', { mission: 'sabotage', length: 'extended', seed: 3 });
+    const sb = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, Mi = G.mission, W = G.world, o = { plan: Mi.def.plan }; calm(); const l0 = W.lights[0].intensity, v0 = W.env.viewRange;
+      const doStage = () => { const s = Mi.stage, a = s.anchors[0].stand; P.pos.set(a[0], W.nav.height(a[0], a[1]), a[1]); sim(0.1); key('KeyE', true); sim(s.hold + 0.4); key('KeyE', false); return s.kind; };
+      P.hp = 1e6; const done = []; while (!Mi.complete) done.push(doStage()); o.done = done;
+      const e = G.enemies.find((x) => !x.dead); e.lkp.set(0, 0, 0); G.sec.level = 0; G.sec.radio(e, 'contact', 0, 0); o.levelAfterRadio = G.sec.level; o.comms = G.sec.commsDown;
+      o.lights = [l0, W.lights[0].intensity]; o.view = [v0, W.env.viewRange]; o.panel = G.sec.panelDown;
+      P.pos.set(44, 0, 28); sim(14); o.secAfterCharge = G.sec.level; o.lines = Mi.lines().map((l) => l.state).join(',');
+      return o;
+    });
+    const hasC = sb.plan.includes('sab:comms'), hasP = sb.plan.includes('sab:power');
+    check('sabotage: comms down blocks radio reports; power down darkens the site; charge detonates and alerts', sb.done.length === 3 && (!hasC || (sb.comms && sb.levelAfterRadio === 0)) && (!hasP || (sb.lights[1] < sb.lights[0] * 0.3 && sb.view[1] < sb.view[0])) && sb.secAfterCharge >= 2 && sb.lines === 'done,done,done,now', sb);
+    // classic flow: death, restart, pause
     await start('warehouse', 'tactical');
     const d = await p.evaluate(() => {
       const G = window.__SP, P = G.player, o = {}; const e = G.enemies[0];
+      o.hud = document.getElementById('objt').textContent.length > 10;
       P.damage(120, e.pos, { name: e.type.name, dist: 12, x: e.pos.x, z: e.pos.z }); sim(0.1); o.state = G.state; o.sub = document.getElementById('ends').textContent;
       document.getElementById('again').click(); o.restart = [G.state, G.player.hp, G.enemies.length];
       press('Escape'); o.paused = G.state; document.getElementById('resume').click(); o.resumed = G.state;
       return o;
     });
-    check('mission: death screen explains the cause; restart, pause and resume work', d.state === 'dead' && /KILLED BY/.test(d.sub) && d.restart[0] === 'playing' && d.restart[1] === 100 && d.paused === 'paused' && d.resumed === 'playing', d);
+    check('mission: death screen explains the cause; restart, pause and resume work', d.hud && d.state === 'dead' && /KILLED BY/.test(d.sub) && d.restart[0] === 'playing' && d.restart[1] === 100 && d.paused === 'paused' && d.resumed === 'playing', d);
+  });
+
+  await run('range', async () => {
+    await p.evaluate(() => { const G = window.__SP; if (G.state === 'playing') press('Escape'); if (G.state === 'paused') document.getElementById('pmenu').click(); else if (G.state !== 'menu') document.getElementById('emenu').click();
+      const L = G.loadout; L.primary = 'm4'; L.secondary = 'pistol'; Object.assign(L.att.m4, { optic: 'iron', muzzle: false, grip: false, laser: false }); document.getElementById('train').click(); });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, R = G.range, o = {}; const s = R.s;
+      o.boot = [G.state, !!R, G.world.name, R.targets.length, G.enemies.length, G.sec.level];
+      const aim = (x, z, y) => { const dx = x - P.pos.x, dz = z - P.pos.z; P.yaw = Math.atan2(-dx, -dz); P.pitch = Math.atan2(y - (P.pos.y + 1.62), Math.hypot(dx, dz)); };
+      const shot = (x, z, y) => { aim(x, z, y); G.inp.rmb = true; sim(0.5); aim(x, z, y); P.swT2 = 0; sim(0.03); P.slot.mag = Math.max(1, P.slot.mag); G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.04); G.inp.lmb = false; sim(0.3); return R.last && { d: Math.round(R.last.dist), z: R.last.zone, dmg: Math.round(R.last.dmg) }; };
+      P.pos.set(-2.5, 0, 6); o.body = shot(-2.5, -10, 1.0); o.afterBody = [s.shots, s.hits, s.heads]; o.head = shot(-2.5, -10, 1.6); o.afterHead = [s.shots, s.hits, s.heads];
+      // cover lane: steel plate and fence stop the round, the target behind is untouched
+      P.pos.set(-11, 0, 6); const h0 = s.hits; shot(-11, -18, 1.0); shot(-11, -32, 1.0); o.covered = [s.hits - h0, R.targets.filter((t) => t.note && !t.pit).every((t) => t.flash <= 0 && t.dmg === 0)]; G.inp.rmb = false; sim(0.4);
+      // weapon bench: cycle to the sniper, zoom in and hit the 100 m target
+      let guard = 0; while (P.slots[0].id !== 'sniper' && guard++ < 6) { press('Digit5'); sim(0.7); } o.bench = P.slots[0].id; const z0 = P.slots[0].st.optic.name; press('Digit7'); sim(0.2); press('Digit8'); sim(0.2); o.optic = [z0, P.slots[0].st.optic.name, P.slots[0].st.sup]; press('Digit7'); sim(0.2);
+      P.pos.set(0.4, 0, 6); P.crouchToggle = true; sim(0.5); aim(0.4, -100, 1.0); G.inp.rmb = true; sim(0.8); for (let i = 0; i < 24; i++) P.zoomStep(1); o.zoom = P.slot.zoom; const hh = s.hits; const far = shot(0.4, -100, 1.0); o.far = [far, s.hits - hh]; G.inp.rmb = false; P.crouchToggle = false; sim(0.5);
+      // moving target really moves, its collision follows
+      const mv = R.targets.find((t) => t.move), x0 = mv.x; sim(1.5); o.moving = [Math.abs(mv.x - x0) > 0.5, Math.abs(mv.cols[0].x0 + 0.25 - mv.x) < 1e-6];
+      // grenade pit: open targets fall, the one behind the wall stays up
+      const V = G.v1.constructor; P.pos.set(0, 0, 6); G.spawnGrenade('frag', new V(10.3, 0.2, -12.8), new V(0, 0, 0), 'player'); sim(3.2); const pit = R.targets.filter((t) => t.pit); o.pit = [pit.filter((t) => !t.note && t.down > 0).length, pit.find((t) => t.note).down > 0, R.msg];
+      // unlimited supplies and no way to fail
+      P.slots[0].reserve = 0; P.inv.frag = 0; sim(0.2); o.supply = [P.slots[0].reserve > 0, P.inv.frag]; P.damage(500, P.pos, {}); sim(0.2); o.alive = [G.state, P.hp];
+      o.dummies = R.dummies.length; const dm = R.dummies[0]; dm.damage(999, P.pos, 'torso'); sim(4); o.respawn = R.dummies.length === 2 && R.dummies.every((d) => !d.dead);
+      press('Escape'); document.getElementById('pmenu').click(); o.menu = G.state;
+      return o;
+    });
+    check('range: loads from the menu with targets and passive dummies, no security response', o.boot[0] === 'playing' && o.boot[1] && o.boot[2] === 'TRAINING RANGE' && o.boot[3] >= 19 && o.boot[4] === 2 && o.boot[5] === 0, o.boot);
+    check('range: hits register with distance, zone and damage; accuracy readout counts them', o.body && o.body.z === 'body' && o.body.d >= 15 && o.body.d <= 17 && o.body.dmg === 28 && o.head && o.head.z === 'head' && o.head.dmg === 70 && o.afterHead.join() === '2,2,1', [o.body, o.head, o.afterHead]);
+    check('range: steel plate and fence stop rounds before the targets behind them', o.covered[0] === 0 && o.covered[1], o.covered);
+    check('range: weapon bench cycles weapon, optic and suppressor; 10x sniper shot hits at 100 m', o.bench === 'sniper' && o.optic[0] !== o.optic[1] && o.optic[2] === true && o.zoom === 10 && o.far[1] === 1 && o.far[0].d > 100, [o.bench, o.optic, o.zoom, o.far]);
+    check('range: moving targets move with their collision; grenade pit respects cover', o.moving[0] && o.moving[1] && o.pit[0] >= 2 && o.pit[1] === false, [o.moving, o.pit]);
+    check('range: unlimited supplies, no failure state, dummies respawn, returns to the menu', o.supply[0] && o.supply[1] === 3 && o.alive[0] === 'playing' && o.alive[1] === 100 && o.respawn && o.menu === 'menu', [o.supply, o.alive, o.respawn, o.menu]);
+    await start('warehouse', 'tactical');
+    check('range: a normal mission starts afterwards', await p.evaluate(() => { const G = window.__SP; return G.state === 'playing' && !G.range && G.enemies.length === 10; }));
+  });
+
+  await run('pacing', async () => {
+    await start('forest', 'tactical');
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, pc = G.pacing, o = {}; calm();
+      o.inactiveInTests = !pc.active; pc.active = true; G.adaptive = true; const s0 = pc.scale;
+      for (let i = 0; i < 120; i++) pc.feed(33); o.down = pc.scale; o.ema = +pc.ema.toFixed(1); o.worst = pc.worst;
+      for (let i = 0; i < 1200; i++) pc.feed(8); o.up = pc.scale;
+      for (let i = 0; i < 300; i++) pc.feed(80); o.floor = pc.scale; for (let i = 0; i < 60; i++) pc.feed(900); o.ignoresHitches = pc.ema < 100;
+      for (let i = 0; i < 1200; i++) pc.feed(8); o.restored = pc.scale; for (let i = 0; i < 120; i++) pc.feed(33); G.adaptive = false; pc.feed(40); o.offRespected = pc.scale === 1; G.adaptive = true; pc.active = false; o.s0 = s0;
+      // mouse look does not depend on the frame time
+      const look = (dt) => { P.yaw = 0; G.inp.mx = 200; G.step(dt); return P.yaw; }; o.look = [look(0.05), look(0.005)].map((v) => +v.toFixed(5));
+      // overlay toggle with F3
+      press('F3'); o.overlay = getComputedStyle(document.getElementById('perfov')).display; press('F3'); o.overlayOff = getComputedStyle(document.getElementById('perfov')).display;
+      // raw-input pointer lock falls back when the browser rejects the option
+      const c = document.getElementById('c'), orig = c.requestPointerLock, calls = []; G.rawInput = true;
+      c.requestPointerLock = (opt) => { calls.push(opt ? 'raw' : 'plain'); return opt ? Promise.reject(new DOMException('no', 'NotSupportedError')) : Promise.resolve(); };
+      G.lock(); return new Promise((res) => setTimeout(() => { c.requestPointerLock = orig; o.lockCalls = calls; res(o); }, 50));
+    });
+    const src = require('fs').readFileSync(require('path').resolve(__dirname, '..', 'src', 'character.js'), 'utf8'), body = src.slice(src.indexOf('  update(dt, s) {'), src.indexOf('  // world-space queries'));
+    check('pacing: adaptive render scale drops under slow frames, never below 60 %, recovers, ignores hitches', o.inactiveInTests && o.s0 === 1 && o.down < 1 && o.floor === 0.6 && o.restored === 1 && o.up === 1 && o.ignoresHitches && o.offRespected, o);
+    check('pacing: frame-time stats (EMA / worst) are tracked; overlay toggles with F3', o.ema > 25 && o.worst >= 33 && o.overlay === 'block' && o.overlayOff === 'none', [o.ema, o.worst, o.overlay, o.overlayOff]);
+    check('input: mouse look is independent of frame time; raw input falls back to plain pointer lock', o.look[0] === o.look[1] && o.look[0] !== 0 && o.lockCalls.join() === 'raw,plain', [o.look, o.lockCalls]);
+    check('pacing: no per-frame allocations in Character.update()', !/new THREE\./.test(body), body.match(/new THREE\.\w+/g));
+  });
+
+  await run('feedback', async () => {
+    await start('warehouse', 'tactical', { primary: 'ak' });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}, V = G.v1.constructor; calm(); G.enemies.forEach((e) => { e.dead = true; e.ch.root.visible = false; });
+      const hitMat = (from, to) => { const d = new V().subVectors(to, from).normalize(); const r = G.trace(from, d, 80, 'player'); return r.wh && r.wh.c.mat; };
+      o.container = hitMat(new V(10, 1.2, -6), new V(11, 1.2, 0)); o.crate = hitMat(new V(-3, 0.5, 18), new V(-3, 0.5, 22.5)); o.ground = hitMat(new V(30, 1.6, 0), new V(30, 0, -5)); o.wall = hitMat(new V(23, 1.5, 0), new V(20, 1.5, 0));
+      // firing at the ground produces an impact on the ground plane (not a tracer into infinity)
+      P.pos.set(30, 0, 0); P.yaw = 0; P.pitch = -0.5; sim(0.3); G.fx.lastMat = null; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.04); G.inp.lmb = false; o.groundImpact = G.fx.lastMat;
+      // low-ammo HUD
+      const s = P.slots[0]; s.mag = 30; sim(0.1); const c0 = document.getElementById('am').style.color; s.mag = 7; sim(0.1); const c1 = document.getElementById('am').style.color; o.hint1 = document.getElementById('ammohint').textContent; s.mag = 0; sim(0.1); o.hint0 = document.getElementById('ammohint').textContent; o.colors = [c0, c1];
+      o.flash = P.slots.map((x) => x.st.flash);
+      return o;
+    });
+    check('feedback: surface tags on metal containers and wall cladding, wooden crates and the concrete floor', o.container === 'metal' && o.crate === 'wood' && o.ground === 'concrete' && o.wall === 'metal' && o.groundImpact === 'concrete', o);
+    check('feedback: low-ammo colour and RELOAD prompt; per-weapon muzzle flash', o.colors[0] === '' && o.colors[1] !== '' && o.hint1 === 'LOW AMMO' && o.hint0 === 'RELOAD [R]' && o.flash[0] === 0.9 && o.flash[1] === 0.55, [o.colors, o.hint1, o.hint0, o.flash]);
   });
 
   await run('stability', async () => {

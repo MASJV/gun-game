@@ -47,12 +47,13 @@ export async function loadAssets(onProgress = () => {}) {
 
 // Gun metadata, measured on the source models (model units, +X = muzzle). s = scale to metres.
 export const GUN = {
-  ak: { s: 0.162, grip: [0.02, 0.05], muzzle: [3.85, 0.58], sight: 0.9, rail: [0.7, 0.8], hand: [1.95, 0.42], eject: [0.9, 0.66] },
-  m4: { s: 0.162, grip: [0.1, 0.05], muzzle: [3.6, 0.65], sight: 1.05, rail: [0.2, 0.93], hand: [1.8, 0.5], eject: [0.65, 0.68] },
-  dmr: { s: 0.15, grip: [0.25, -0.1], muzzle: [5.2, 0.22], sight: 0.5, hand: [1.9, 0.05], eject: [0.6, 0.25], scope: [-0.22, 0.5] },
-  shotgun: { s: 0.175, grip: [0.15, 0], muzzle: [3.8, 0.24], sight: 0.37, rail: [0.8, 0.33], hand: [2.2, -0.04], eject: [0.9, 0.2] },
-  smg: { s: 0.16, grip: [-0.05, 0], muzzle: [2.25, 0.55], sight: 0.78, rail: [0.7, 0.72], hand: [1.45, 0.38], eject: [0.6, 0.5] },
-  pistol: { s: 0.11, grip: [0, 0.1], muzzle: [1.45, 0.42], sight: 0.56, hand: [0.05, 0.02], eject: [0.5, 0.5] },
+  ak: { s: 0.162, grip: [0.02, 0.05], muzzle: [3.85, 0.58], sight: 0.9, rail: [0.7, 0.8], hand: [1.95, 0.42], eject: [0.9, 0.66], mag: [1.15, 0.0] },
+  sniper: { s: 0.165, grip: [0.3, 0.05], muzzle: [5.3, 0.36], sight: 0.65, hand: [2.0, 0.16], eject: [0.6, 0.45], scope: [0.02, 0.65], mag: [0.85, 0.08] },
+  m4: { s: 0.162, grip: [0.1, 0.05], muzzle: [3.6, 0.65], sight: 1.05, rail: [0.2, 0.93], hand: [1.8, 0.5], eject: [0.65, 0.68], mag: [0.92, 0.1] },
+  dmr: { s: 0.15, grip: [0.25, -0.1], muzzle: [5.2, 0.22], sight: 0.5, hand: [1.9, 0.05], eject: [0.6, 0.25], scope: [-0.22, 0.5], mag: [0.75, -0.02] },
+  shotgun: { s: 0.175, grip: [0.15, 0], muzzle: [3.8, 0.24], sight: 0.37, rail: [0.8, 0.33], hand: [2.2, -0.04], eject: [0.9, 0.2], mag: [1.05, 0.0] },
+  smg: { s: 0.16, grip: [-0.05, 0], muzzle: [2.25, 0.55], sight: 0.78, rail: [0.7, 0.72], hand: [1.45, 0.38], eject: [0.6, 0.5], mag: [0.87, 0.02] },
+  pistol: { s: 0.11, grip: [0, 0.1], muzzle: [1.45, 0.42], sight: 0.56, hand: [0.05, 0.02], eject: [0.5, 0.5], mag: [0.0, -0.12] },
   carbine: { s: 0.162, grip: [0.15, 0.1], muzzle: [3.25, 0.62], sight: 0.9, hand: [2.0, 0.5], eject: [0.9, 0.66] },
 };
 // Returns a group in "weapon space": origin at the pistol grip, barrel along -Z, up +Y.

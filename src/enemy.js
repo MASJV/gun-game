@@ -21,7 +21,7 @@ export const PROFILES = {
 const TYPES = {
   guard: { name: 'Rifleman', aggr: 0.5, caut: 0.5 }, aggressor: { name: 'Pointman', aggr: 0.85, caut: 0.25 }, cautious: { name: 'Marksman', aggr: 0.25, caut: 0.85 },
 };
-export const DMG = 17; // enemy rifle damage per hit, identical in every mode
+export const DMG = 15; // enemy rifle damage per hit, identical in every mode
 
 const rr = (a) => rnd(a[0], a[1]), ri = (a) => Math.floor(rnd(a[0], a[1] + 1));
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 6.2832; while (d < -Math.PI) d += 6.2832; return d; };
@@ -122,6 +122,21 @@ export class Enemy {
     if (this.lkpAge > 2 || !this.hasLkp) { this.lkp.set(x, 0, z); this.lkpVel.set(0, 0, 0); this.lkpAge = 1; this.hasLkp = true; }
     if (this.state === 'PATROL' || this.state === 'SEARCH') this.suspect(x, z, this.duty === 'objective' ? 'defend' : Math.random() < this.pr.flank ? 'flank' : 'investigate', rnd(0.3, 1.2));
   }
+  // a live grenade lands nearby: get away from it (same nav rules as any other move)
+  evade(gx, gz) {
+    if (this.dead || this.stun > 0 || this.trav || this.state === 'ALARM') return false;
+    if (Math.random() > (this.pr.label === 'RECRUIT' ? 0.6 : 0.95)) return false; // recruits sometimes freeze
+    const nav = this.g.world.nav, base = Math.atan2(this.pos.z - gz, this.pos.x - gx);
+    for (const off of [0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9]) {
+      const c = nav.snap(gx + Math.cos(base + off) * 10, gz + Math.sin(base + off) * 10);
+      if (!c) continue;
+      const p = nav.path(this.pos.x, this.pos.z, c.x, c.z, 40); if (!p) continue;
+      this.release(); this.path = p; this.pi = 0; this.alerted = true; this.set('MOVE', 'retreat'); this.evading = 2.5;
+      if (!this.hasLkp) { this.lkp.set(gx, 0, gz); this.hasLkp = true; this.lkpAge = 1; }
+      return true;
+    }
+    return false;
+  }
   flashbang(dur) { if (this.dead) return; this.stun = Math.max(this.stun, dur); this.detect = 0; this.seeing = false; this.los = false; this.ch.playUpper('Hit_Head', { speed: 0.5 }); this.trav || (this.path = null); }
   damage(d, from, part) {
     if (this.dead) return;
@@ -149,8 +164,8 @@ export class Enemy {
     const G = this.g, ty = T.y + 1.45;
     if (G.los(s.x, s.y + (s.high ? 1.35 : 0.7), s.z, T.x, ty, T.z)) return null;
     const m = [];
-    for (const sd of s.sides) if (G.los(s.x + s.tx * sd * 0.5, s.y + (s.high ? 1.5 : 1.0), s.z + s.tz * sd * 0.5, T.x, ty, T.z)) m.push({ type: 'side', side: sd });
-    if (s.over && G.los(s.x, s.y + 1.55, s.z, T.x, ty, T.z)) m.push({ type: 'over' });
+    for (const sd of s.sides) if (G.los(s.x + s.tx * sd * 0.5, s.y + (s.high ? 1.5 : 1.0), s.z + s.tz * sd * 0.5, T.x, ty, T.z) && G.losB(s.x + s.tx * sd * 0.5, s.y + (s.high ? 1.4 : 0.95), s.z + s.tz * sd * 0.5, T.x, ty - 0.3, T.z)) m.push({ type: 'side', side: sd });
+    if (s.over && G.los(s.x, s.y + 1.55, s.z, T.x, ty, T.z) && G.losB(s.x, s.y + 1.42, s.z, T.x, ty - 0.3, T.z)) m.push({ type: 'over' });
     return m;
   }
   pickCover(intent, T, around, radius) {
@@ -185,7 +200,7 @@ export class Enemy {
     return true;
   }
   toHide(extra = 0) {
-    this.phase = 'hide'; this.hideT = rr(this.pr.hide) + extra; this.suppLeft = 0; this.extended = false;
+    this.phase = 'hide'; this.hideT = rr(this.pr.hide) + extra; this.suppLeft = 0; this.extended = false; this.hidden = 0;
     if ((this.peeks >= this.maxPeeks || this.wasHit) && !this.holdPost && this.g.sec.mayMove(this)) { // used up this position: relocate
       const tac = this.tac; this.takeCover(tac === 'flank' ? 'flank' : tac === 'push' ? 'push' : this.hp < 40 ? 'retreat' : 'hold');
     }
@@ -299,18 +314,17 @@ export class Enemy {
     else if (this.seeBody) { tx = P.pos.x + P.leanX * 0.5; ty = P.pos.y + P.height * 0.58; tz = P.pos.z + P.leanZ * 0.5; }
     else { tx = P.eyePos.x; ty = P.eyePos.y - 0.06; tz = P.eyePos.z; }
     let dx = tx - ox, dy = ty - oy, dz = tz - oz; const dist = Math.hypot(dx, dy, dz);
-    // the muzzle must have a real line of fire: no shooting through the cover the guard is hiding behind
-    if (rayBoxes(G.world.colliders, ox, oy, oz, dx / dist, dy / dist, dz / dist, Math.min(dist, 1.7), 'bullet')) { this.blockT += 0.3; return false; }
+    // The muzzle must have a real line of fire: not blocked by the guard's own cover, and (for aimed fire)
+    // not blocked anywhere on the way to the part of the player he can see. Seeing through a fence is not enough.
+    if (rayBoxes(G.world.colliders, ox, oy, oz, dx / dist, dy / dist, dz / dist, Math.min(dist, suppress ? 1.7 : dist - 0.35), 'bullet')) { this.blockT += 0.3; return false; }
     this.ammo--;
     const sp = (pr.spread * (1 + this.pd / 40) * (1 + (Math.min(P.speed, 7) / 7) * 0.8) * (1 + Math.max(0, 1 - (this.seenT + (this.state === 'COVER' ? pr.settle * 0.4 : 0)) / pr.settle) * 0.9) * (this.supp > 0.5 ? 1.35 : 1) * (suppress ? 1.7 : 1) * (P.crouch ? 1.15 : 1) * Math.PI) / 180;
     const yaw = Math.atan2(dx, dz) + gauss() * sp, pit = Math.atan2(dy, Math.hypot(dx, dz)) + gauss() * sp * 0.7, cp = Math.cos(pit);
-    dx = Math.sin(yaw) * cp; dy = Math.sin(pit); dz = Math.cos(yaw) * cp;
-    const wh = rayBoxes(G.world.colliders, ox, oy, oz, dx, dy, dz, 120, 'bullet'), wd = wh ? wh.d : 120;
-    const ph = rayBoxes(G.playerBox(), ox, oy, oz, dx, dy, dz, wd, 'bullet');
-    const d = ph ? ph.d : wd, a = G.v1.set(ox, oy, oz), b = G.v2.set(ox + dx * d, oy + dy * d, oz + dz * d);
+    const D = G.v3.set(Math.sin(yaw) * cp, Math.sin(pit), Math.cos(yaw) * cp), a = G.v1.set(ox, oy, oz);
+    const r = G.trace(a, D, 120, this), b = G.v2.set(ox + D.x * r.d, oy + D.y * r.d, oz + D.z * r.d); // same resolver as the player's rounds
     G.fx.tracer(a, b, 0xffb070);
-    if (ph) P.damage(DMG, this.pos, { name: this.type.name, dist: this.pd, x: this.pos.x, z: this.pos.z });
-    else { if (wh) G.fx.impact(b, G.v3.set(wh.nx, wh.ny, wh.nz)); G.nearMiss(ox, oy, oz, dx, dy, dz); }
+    if (r.kind === 'player') P.damage(DMG, this.pos, { name: this.type.name, dist: this.pd, x: this.pos.x, z: this.pos.z });
+    else { if (r.kind === 'world') G.fx.impact(b, V2.set(r.wh.nx, r.wh.ny, r.wh.nz), r.wh.c.mat); else if (r.kind === 'civ') r.e.damage(DMG); G.nearMiss(ox, oy, oz, D.x, D.y, D.z); }
     ch.fire(); G.enemyShotSound(this); G.sound(this.pos, 30, 'ally', this);
     return true;
   }
@@ -328,7 +342,7 @@ export class Enemy {
       return;
     }
     // perception
-    if ((this.percT -= dt) <= 0) { this.percT = 0.1 + Math.random() * 0.05; this.los = this.canSee(); }
+    if ((this.percT -= dt) <= 0) { this.percT = 0.1 + Math.random() * 0.05; this.los = this.canSee(); ch.setShadow(this.pd < 34); } // far soldiers skip the shadow pass
     const dxp = P.pos.x - this.pos.x, dzp = P.pos.z - this.pos.z; this.pd = Math.hypot(dxp, dzp);
     if (this.los) {
       let rate = pr.detect * G.world.env.detect * (2.2 * (1 - this.pd / G.world.env.viewRange) + 0.25);
@@ -416,6 +430,8 @@ export class Enemy {
         break;
       case 'COMBAT': // in the open: fight for a moment, then get to cover
         face = lookAt(this.lkp); this.crouch = !!this.wantCrouch && !this.moved;
+        if (this.reloading && this.openT > 0) this.openT = 0; // caught reloading in the open: get behind something now
+        if (this.blockT > 1) { this.blockT = 0; this.openT = 0; this.decT = 0; this.wantCrouch = false; if (!this.takeCover('flank') && !this.takeCover('push')) this.goInvestigate(this.lkp.x, this.lkp.z); break; } // can see but cannot shoot (fence, low wall): find a real firing position
         if (this.path && this.pi < this.path.length) this.follow(dt, 1.7);
         if ((this.openT -= dt) <= 0 && (this.decT -= dt) <= 0) {
           this.decT = rr(pr.decide);
@@ -428,7 +444,7 @@ export class Enemy {
         }
         break;
       case 'MOVE': {
-        const hot = this.phase !== 'defend' && this.seeing && this.pd < 7 && this.stateT > 0.6;
+        const hot = this.phase !== 'defend' && !(this.evading > 0) && this.seeing && this.pd < 7 && this.stateT > 0.6; if (this.evading > 0) this.evading -= dt;
         if (hot) { this.engage(true); this.openT = rnd(0.8, 1.6); break; }
         if (this.follow(dt, this.phase === 'retreat' ? 4.6 : this.phase === 'defend' ? 3.4 : 4.3)) {
           if (!this.spot) { this.engage(true); break; }
@@ -442,8 +458,9 @@ export class Enemy {
         face = lookAt(this.hasLkp || this.holdPost ? this.lkp : V.set(s.x - s.nx * 5, 0, s.z - s.nz * 5));
         if (this.phase === 'hide') {
           this.crouch = !s.high;
-          this.hideT -= dt * (this.supp > 0.6 ? 0.3 : 1);
+          this.hideT -= dt * (this.supp > 0.6 ? 0.3 : 1); this.hidden = (this.hidden || 0) + dt;
           if (this.hideT <= 0 && !this.reloading && this.throwT <= 0) this.afterHide();
+          else if (this.hidden > 9 && this.hasLkp && !this.holdPost && !this.reloading) { this.hidden = 0; this.supp = 0; this.holdT = 0; if (!this.nextMove()) this.afterHide(); } // nobody sits behind a crate forever: observe, move or push
         } else {
           const amt = this.phase === 'glance' ? 0.75 : 1 + Math.min(0.3, this.blockT);
           if (m.type === 'side') { this.crouch = !s.high; lean = (s.tx * m.side * Math.cos(this.yaw) - s.tz * m.side * Math.sin(this.yaw)) * amt; } else this.crouch = false;
@@ -452,7 +469,7 @@ export class Enemy {
           else {
             if (this.seeing) this.blindT = 0; else { this.blindT += dt; suppress = this.suppLeft > 0 && this.lkpAge < 4 && this.blindT > 0.3; }
             if (this.blockT > 0.9) { this.modes = this.modes.filter((x) => x !== m); if (!this.modes.length) this.bad.add(s.id); this.peeks = 99; this.toHide(); } // no line of fire from here
-            else if (this.phaseT <= 0 && this.seeing && !this.extended && this.supp < 0.4 && this.ammo > 4 && Math.random() < 0.55) { this.extended = true; this.phaseT = rnd(0.5, 1.1); } // target still exposed: one more burst
+            else if (this.phaseT <= 0 && this.seeing && !this.extended && this.supp < 0.4 && this.ammo > 4 && Math.random() < 0.4) { this.extended = true; this.phaseT = rnd(0.5, 1.1); } // target still exposed: one more burst
             else if (this.phaseT <= 0 || this.ammo <= 0 || (this.blindT > 0.7 && !suppress)) this.toHide();
           }
         }

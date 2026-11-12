@@ -27,7 +27,7 @@ const KEEP1 = ['Idle_Loop', 'Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Crouch_
   'Pistol_Shoot', 'Pistol_Reload', 'Death01', 'Hit_Chest', 'Hit_Head', 'Jump_Start', 'Jump_Loop', 'Jump_Land', 'Roll', 'Interact'];
 const KEEP2 = ['ClimbUp_1m', 'OverhandThrow', 'Hit_Knockback', 'Idle_TalkingPhone_Loop'];
 const MODELS = {
-  gun_ak: 'Guns/AssaultRifle_2', gun_m4: 'Guns/AssaultRifle2_1', gun_dmr: 'Guns/SniperRifle_1', gun_pistol: 'Guns/Pistol_1', gun_smg: 'Guns/SubmachineGun_2', gun_shotgun: 'Guns/Shotgun_1',
+  gun_ak: 'Guns/AssaultRifle_2', gun_m4: 'Guns/AssaultRifle2_1', gun_dmr: 'Guns/SniperRifle_1', gun_sniper: 'Guns/SniperRifle_3', gun_pistol: 'Guns/Pistol_1', gun_smg: 'Guns/SubmachineGun_2', gun_shotgun: 'Guns/Shotgun_1',
   gun_carbine: 'Guns/AssaultRifle_3', acc_scope: 'Accessories/Scope_1', acc_suppressor: 'Accessories/Silencer_1', acc_grip: 'Accessories/Grip', acc_knife: 'Accessories/Bayonet',
 };
 

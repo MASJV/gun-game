@@ -5,15 +5,17 @@ import { A, makeGun } from './assets.js';
 export const WEAPONS = {
   ak: { slot: 'primary', name: 'AK-47', desc: 'Hard hitting, heavy recoil', auto: true, dmg: 36, rpm: 600, mag: 30, reserve: 120, recoil: 1.45, recoilH: 0.5, hip: 2.1, ads: 0.2, reload: 2.6, adsT: 0.24, move: 0.93, kick: 0.07, noise: 44, falloff: [35, 0.75], optics: ['iron', 'reddot', 'holo', 'scope'], muzzle: 1, grip: 1, laser: 1 },
   m4: { slot: 'primary', name: 'M4A1', desc: 'Balanced, controllable', auto: true, dmg: 28, rpm: 780, mag: 30, reserve: 150, recoil: 0.82, recoilH: 0.26, hip: 1.5, ads: 0.13, reload: 2.1, adsT: 0.19, move: 0.97, kick: 0.045, noise: 42, falloff: [40, 0.8], optics: ['iron', 'reddot', 'holo', 'scope'], muzzle: 1, grip: 1, laser: 1 },
-  dmr: { slot: 'primary', name: 'SR-9 DMR', desc: 'Semi-auto marksman rifle, 4x scope', auto: false, dmg: 68, rpm: 230, mag: 10, reserve: 50, recoil: 2.7, recoilH: 0.5, hip: 3.4, ads: 0.03, reload: 2.8, adsT: 0.3, move: 0.9, kick: 0.11, noise: 50, optics: ['scope'], muzzle: 1, head: 3 },
-  pistol: { slot: 'secondary', name: 'P9 PISTOL', desc: 'Fast handling sidearm', auto: false, dmg: 30, rpm: 420, mag: 15, reserve: 60, recoil: 1.25, recoilH: 0.3, hip: 1.2, ads: 0.3, reload: 1.4, adsT: 0.12, move: 1.06, kick: 0.085, noise: 36, falloff: [20, 0.65], optics: ['iron'], muzzle: 1, laser: 1 },
+  sniper: { slot: 'primary', name: 'L96 SNIPER', desc: 'Bolt-action precision rifle, 4–10x scope', auto: false, bolt: 1.25, dmg: 115, rpm: 46, mag: 5, reserve: 25, recoil: 5.2, recoilH: 0.9, hip: 6, ads: 0.0, reload: 3.3, adsT: 0.36, move: 0.86, kick: 0.17, noise: 62, optics: ['vscope', 'scope'], muzzle: 1, head: 3, rk: 'bolt', ins: 0.55 },
+  dmr: { slot: 'primary', name: 'SR-9 DMR', desc: 'Semi-auto marksman rifle, scoped', auto: false, dmg: 68, rpm: 230, mag: 10, reserve: 50, recoil: 2.7, recoilH: 0.5, hip: 3.4, ads: 0.03, reload: 2.8, adsT: 0.3, move: 0.9, kick: 0.11, noise: 50, optics: ['scope', 'vscope'], muzzle: 1, head: 3 },
+  pistol: { slot: 'secondary', name: 'P9 PISTOL', desc: 'Fast handling sidearm', auto: false, dmg: 30, rpm: 420, mag: 15, reserve: 60, recoil: 1.25, recoilH: 0.3, hip: 1.2, ads: 0.3, reload: 1.4, adsT: 0.12, move: 1.06, kick: 0.085, noise: 36, falloff: [20, 0.65], optics: ['iron'], muzzle: 1, laser: 1, rk: 'pistol', ins: 0.55 },
   smg: { slot: 'secondary', name: 'VK-9 SMG', desc: 'High rate of fire, short range', auto: true, dmg: 21, rpm: 900, mag: 30, reserve: 120, recoil: 0.6, recoilH: 0.36, hip: 1.3, ads: 0.3, reload: 1.9, adsT: 0.14, move: 1.03, kick: 0.035, noise: 38, falloff: [16, 0.6], optics: ['iron', 'reddot', 'holo'], muzzle: 1, grip: 1, laser: 1 },
-  shotgun: { slot: 'secondary', name: 'M590 SHOTGUN', desc: '8 pellets, devastating up close', auto: false, pellets: 8, dmg: 15, rpm: 72, mag: 6, reserve: 30, recoil: 4.4, recoilH: 0.8, hip: 3.2, ads: 2.5, reload: 0.5, shells: 1, adsT: 0.2, move: 0.95, kick: 0.15, noise: 48, falloff: [9, 0.35], optics: ['iron', 'reddot'], laser: 1 },
+  shotgun: { slot: 'secondary', name: 'M590 SHOTGUN', desc: '8 pellets, devastating up close', auto: false, pellets: 8, dmg: 15, rpm: 72, mag: 6, reserve: 30, recoil: 4.4, recoilH: 0.8, hip: 3.2, ads: 2.5, reload: 0.62, shells: 1, rk: 'shell', ins: 0.6, adsT: 0.2, move: 0.95, kick: 0.15, noise: 48, falloff: [9, 0.35], optics: ['iron', 'reddot'], laser: 1 },
   knife: { slot: 'melee', name: 'COMBAT KNIFE', desc: 'Silent. Lethal from behind', melee: true, dmg: 70, range: 2.1, rate: 0.6, move: 1.1, mag: 0, reserve: 0 },
 };
 export const OPTICS = {
   iron: { name: 'Iron sights', fov: 58, eye: 0.3 }, reddot: { name: 'Red dot', fov: 55, eye: 0.19, ret: 'dot' }, holo: { name: 'Holographic', fov: 52, eye: 0.19, ret: 'holo' },
-  scope: { name: '4x scope', fov: 19, eye: 0.085, ret: 'scope', adsT: 0.06 },
+  scope: { name: '4x scope', zoom: [4, 4], eye: 0.085, ret: 'scope', adsT: 0.06, desc: 'fixed 4x' },
+  vscope: { name: '4–10x variable', zoom: [4, 10], eye: 0.085, ret: 'scope', adsT: 0.1, desc: 'mouse wheel adjusts zoom' },
 };
 export const KITS = {
   assault: { name: 'ASSAULT', desc: '3 frag · 1 flash · 1 medkit · 2 stims', frag: 3, flash: 1, smoke: 0, med: 1, stim: 2 },
@@ -39,6 +41,8 @@ export function saveLoadout(l) { try { localStorage.setItem('sp2_loadout', JSON.
 export function statsFor(id, att = {}) {
   const w = WEAPONS[id], s = { ...w, id, att, sup: !!att.muzzle, optic: OPTICS[att.optic] || OPTICS.iron };
   if (w.melee) return s;
+  s.flash = { ak: 0.9, m4: 0.8, dmr: 1.05, sniper: 1.3, pistol: 0.55, smg: 0.65, shotgun: 1.35 }[id] || 0.8;
+  s.rk = w.rk || 'rifle'; s.ins = w.ins || 0.6;
   if (att.muzzle) { s.noise = Math.round(w.noise * 0.3); s.recoil *= 0.92; if (s.falloff) s.falloff = [s.falloff[0] * 0.85, s.falloff[1]]; }
   if (att.grip) { s.recoil *= 0.8; s.recoilH *= 0.8; s.hip *= 0.88; s.adsT *= 1.06; }
   s.adsT += s.optic.adsT || 0;
@@ -105,9 +109,9 @@ export function buildView(id, att = {}, noHands) {
   const gun = makeGun(id), d = gun.def; g.add(gun);
   let sightY = (d.sight - d.grip[1]) * d.s, sightZ = d.rail ? gun.pt(d.rail).z + 0.02 : 0.02, eye = OPTICS[att.optic || 'iron'].eye;
   const o = att.optic;
-  if (id === 'dmr') { const p = gun.pt(d.scope); sightY = p.y; sightZ = p.z; }
+  if (d.scope) { const p = gun.pt(d.scope); sightY = p.y; sightZ = p.z; }
   else if (o === 'reddot' || o === 'holo') { const m = opticMesh(o), p = gun.pt(d.rail); m.position.copy(p); g.add(m); sightY = p.y + m.center; sightZ = p.z; }
-  else if (o === 'scope') {
+  else if (o === 'scope' || o === 'vscope') {
     const m = A.models.acc_scope.clone(true), p = gun.pt(d.rail); m.scale.setScalar(0.115); m.rotation.y = Math.PI / 2; m.position.set(0, p.y + 0.006, p.z - 0.02); g.add(m);
     sightY = p.y + 0.006 + 0.19 * 0.115; sightZ = p.z - 0.02 + 1.09 * 0.115;
   }
@@ -125,6 +129,11 @@ export function buildView(id, att = {}, noHands) {
   if (noHands) { /* showcase model */ } else if (id === 'pistol') hand(g.lh, new THREE.Vector3(-0.012, -0.035, 0.0), new THREE.Vector3(-0.2, -0.25, 0.38), -1, 'y');
   else hand(g.lh, left, new THREE.Vector3(-0.26, -0.3, left.z + 0.42), -1, att.grip ? 'y' : 'z');
   if (!noHands) g.rh = hand(g, new THREE.Vector3(0, -0.02, 0.012), new THREE.Vector3(0.13, -0.26, 0.42), 1, 'y');
+  // reload props: where the left hand rests, where the magazine (or shell port) is, and a spare magazine / shell
+  g.lhRest = id === 'pistol' ? new THREE.Vector3(-0.012, -0.035, 0) : left.clone(); g.magWell = gun.pt(d.mag); g.magWell.y -= 0.03;
+  const shell = w.shells, mp = (g.magProxy = new THREE.Mesh(shell ? new THREE.CylinderGeometry(0.011, 0.011, 0.06, 8) : box(0.026, id === 'pistol' ? 0.1 : id === 'sniper' || id === 'dmr' ? 0.06 : 0.13, 0.05), shell ? std(0x8a2a22, 0.5, 0.1) : std(id === 'ak' ? 0x2a2420 : 0x26292c, 0.5, 0.5)));
+  if (shell) mp.rotation.x = Math.PI / 2;
+  mp.position.copy(g.lhRest); mp.position.y += shell ? 0.03 : 0.05; mp.visible = false; g.lh.add(mp);
   g.gun = gun; g.eject = gun.pt(d.eject, 0.5);
   g.hip = id === 'pistol' ? new THREE.Vector3(0.13, -0.14, -0.42) : new THREE.Vector3(0.16, -0.165, -0.37);
   g.adsPos = new THREE.Vector3(0, -sightY, -eye - sightZ);

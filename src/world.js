@@ -1,6 +1,7 @@
 // World construction: merged static geometry, AABB colliders, ray tests, nav grid, both maps.
 import * as THREE from 'three';
 import { A } from './assets.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const rnd = (a = 1, b) => (b === undefined ? Math.random() * a : a + Math.random() * (b - a));
 export const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -68,20 +69,22 @@ function M(x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) {
 }
 
 class Builder {
-  constructor() { this.b = {}; this.col = []; this.rng = seeded(4242); this.inst = {}; this.canopy = []; }
+  constructor() { this.b = {}; this.col = []; this.rng = seeded(4242); this.inst = {}; this.canopy = []; this.lod = {}; this.lodInst = {}; }
   // instanced CC0 prop (see assets.js bake); o.col: true = collider from the model bounds, o.tint: colour multiplier, o.shadow: false to skip
   prop(name, x, y, z, ry = 0, s = 1, o = {}) {
     const P = A.parts[name]; if (!P) return null;
     const sx = Array.isArray(s) ? s[0] : s, sy = Array.isArray(s) ? s[1] : s, sz = Array.isArray(s) ? s[2] : s;
-    const k = name + '|' + Math.floor((x + 200) / 48) + '|' + Math.floor((z + 200) / 48) + (o.shadow === false ? '|n' : '');
-    (this.inst[k] || (this.inst[k] = { name, shadow: o.shadow !== false, list: [] })).list.push({ m: M(x, y, z, 0, ry, 0, sx, sy, sz), tint: o.tint });
+    const cs0 = o.cell || 48, k = name + '|' + cs0 + '|' + Math.floor((x + 200) / cs0) + '|' + Math.floor((z + 200) / cs0) + (o.shadow === false ? '|n' : '');
+    (this.inst[k] || (this.inst[k] = { name, shadow: o.shadow !== false, list: [], cell: o.cell ? lodKey(x, z) : null })).list.push({ m: M(x, y, z, 0, ry, 0, sx, sy, sz), tint: o.tint });
     if (o.col) {
       const b = P.box, cs = Math.abs(Math.cos(ry)), sn = Math.abs(Math.sin(ry)), k2 = o.shrink ?? 1;
       const hx = (Math.max(Math.abs(b.min.x), Math.abs(b.max.x)) * sx * cs + Math.max(Math.abs(b.min.z), Math.abs(b.max.z)) * sz * sn) * k2, hz = (Math.max(Math.abs(b.min.x), Math.abs(b.max.x)) * sx * sn + Math.max(Math.abs(b.min.z), Math.abs(b.max.z)) * sz * cs) * k2;
+      if (!o.mat) o = { ...o, mat: /container|barrel|truck|pipes|tower|street|wheels/.test(name) ? 'metal' : /rock|cinder/.test(name) ? 'concrete' : /barrier/.test(name) ? 'plastic' : 'wood' };
       this.collider(x - hx, y, z - hz, x + hx, y + b.max.y * sy * (o.shrinkY ?? 1), z + hz, o);
     }
     return P;
   }
+  lodCell(key) { return this.lod[key] || (this.lod[key] = { x: (+key.split('|')[0] + 0.5) * LOD_CELL - 200, z: (+key.split('|')[1] + 0.5) * LOD_CELL - 200, full: [], lod: null, near: true }); }
   buf(k) { return this.b[k] || (this.b[k] = { p: [], n: [], u: [], c: [] }); }
   color(hex, tint) {
     const c = new THREE.Color(hex), v = tint === 0 ? 1 : 1 + (this.rng() - 0.5) * (tint ?? 0.14);
@@ -106,12 +109,12 @@ class Builder {
     }
     if (o.col !== false) {
       const ex = Math.abs(cs) * hw + Math.abs(sn) * hd, ez = Math.abs(sn) * hw + Math.abs(cs) * hd;
-      this.collider(x - ex, y, z - ez, x + ex, y + h, z + ez, o);
+      this.collider(x - ex, y, z - ez, x + ex, y + h, z + ez, o.mat ? o : { ...o, mat: SURF[k] || 'concrete' });
     }
     return this;
   }
   collider(x0, y0, z0, x1, y1, z1, o = {}) {
-    this.col.push({ x0, x1, y0, y1, z0, z1, solid: o.solid !== false, sight: o.sight !== false, bullet: o.bullet !== false, walk: !!o.walk, nocover: !!o.nocover });
+    this.col.push({ x0, x1, y0, y1, z0, z1, solid: o.solid !== false, sight: o.sight !== false, bullet: o.bullet !== false, walk: !!o.walk, nocover: !!o.nocover, mat: o.mat || 'concrete' });
   }
   geo(k, hex, g, m, o = {}) {
     const B = this.buf(k), col = this.color(hex, o.tint);
@@ -148,8 +151,15 @@ class Builder {
         const im = new THREE.InstancedMesh(part.geo, part.mat, I.list.length);
         I.list.forEach((it, i) => { im.setMatrixAt(i, it.m); im.setColorAt(i, it.tint ? c.setHex(it.tint) : white); });
         im.castShadow = I.shadow && !part.leaf; im.receiveShadow = !part.leaf; im.userData.detail = /grass|fern/.test(I.name); im.computeBoundingSphere(); im.userData.shared = true;
-        scene.add(im); out.push(im);
+        scene.add(im); out.push(im); if (I.cell) this.lodCell(I.cell).full.push(im);
       }
+    }
+    // distant trees: one cheap instanced mesh per 16 m cell, swapped in by updateLOD()
+    for (const key in this.lodInst) {
+      const L = this.lodInst[key], im = new THREE.InstancedMesh(lodTree(), LOD_MAT, L.length);
+      L.forEach((it, i) => { im.setMatrixAt(i, it.m); im.setColorAt(i, c.setHex(it.tint)); });
+      im.castShadow = false; im.receiveShadow = false; im.computeBoundingSphere(); im.userData.shared = true; scene.add(im); out.push(im);
+      if (key === 'border') im.userData.always = true; else { im.visible = false; this.lodCell(key).lod = im; }
     }
     if (this.canopy.length) { // foliage shadows from simple cones: drawn into the shadow map only
       const im = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), this.canopy.length);
@@ -369,7 +379,7 @@ export function buildCover(cols, nav) {
 }
 
 // ---------- prop helpers ----------
-function wall(B, tex, hex, ax, az, bx, bz, h, gaps = [], t = 0.3, o = {}) {
+export function wall(B, tex, hex, ax, az, bx, bz, h, gaps = [], t = 0.3, o = {}) {
   const alongX = az === bz, s = alongX ? ax : az, e = alongX ? bx : bz;
   const seg = (p, q, y0, y1) => {
     if (q - p < 0.02 || y1 - y0 < 0.02) return;
@@ -389,29 +399,29 @@ function room(B, tex, hex, x0, z0, x1, z1, h, d = {}, t = 0.3) {
   wall(B, tex, hex, x0, z0, x1, z0, h, d.n, t); wall(B, tex, hex, x0, z1, x1, z1, h, d.s, t);
   wall(B, tex, hex, x0, z0, x0, z1, h, d.w, t); wall(B, tex, hex, x1, z0, x1, z1, h, d.e, t);
 }
-function crate(B, x, z, s = 1, y = 0, hex = 0x5d4c34) { B.box('wood', hex, x, y, z, s, s, s, { rot: 0 }); }
+export function crate(B, x, z, s = 1, y = 0, hex = 0x5d4c34) { B.box('wood', hex, x, y, z, s, s, s, { rot: 0 }); }
 function barrel(B, x, z, hex = 0x4a5a48) {
-  if (B.prop('barrel', x, 0, z, B.rng() * 6, 0.92, { tint: hex === 0x4a5a48 ? 0x8a9a80 : 0xffffff })) return B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1.05, z + 0.33);
+  if (B.prop('barrel', x, 0, z, B.rng() * 6, 0.92, { tint: hex === 0x4a5a48 ? 0x8a9a80 : 0xffffff })) return B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1.05, z + 0.33, { mat: 'metal' });
   B.geo('metal', hex, new THREE.CylinderGeometry(0.33, 0.33, 1, 10), M(x, 0.5, z));
   B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1, z + 0.33);
 }
-function sandbags(B, x, z, len, alongX) {
+export function sandbags(B, x, z, len, alongX) {
   const w = alongX ? len : 0.75, d = alongX ? 0.75 : len;
   B.box('plain', 0x6a6046, x, 0, z, w, 0.7, d, { col: false }); B.box('plain', 0x5f573f, x, 0.7, z, w * 0.96, 0.35, d * 0.7, { col: false });
-  B.collider(x - w / 2, 0, z - d / 2, x + w / 2, 1.05, z + d / 2);
+  B.collider(x - w / 2, 0, z - d / 2, x + w / 2, 1.05, z + d / 2, { mat: 'dirt' });
 }
 function container(B, x, z, alongX, hex, stack = 1) {
   const w = alongX ? 6.1 : 2.5, d = alongX ? 2.5 : 6.1;
   for (let i = 0; i < stack; i++) {
     const ox = i ? 0.15 : 0;
-    if (B.prop((hex >> 4) % 2 ? 'container_red' : 'container_green', x + ox, i * 2.6 - 0.04, z, alongX ? 0 : Math.PI / 2, [6.1 / 5.71, 1, 2.5 / 2.56], { tint: [0xb0b4b8, 0x8e9498, 0xa4a098][(hex >> 8) % 3] })) B.collider(x + ox - w / 2, i * 2.6, z - d / 2, x + ox + w / 2, i * 2.6 + 2.6, z + d / 2);
+    if (B.prop((hex >> 4) % 2 ? 'container_red' : 'container_green', x + ox, i * 2.6 - 0.04, z, alongX ? 0 : Math.PI / 2, [6.1 / 5.71, 1, 2.5 / 2.56], { tint: [0xb0b4b8, 0x8e9498, 0xa4a098][(hex >> 8) % 3] })) B.collider(x + ox - w / 2, i * 2.6, z - d / 2, x + ox + w / 2, i * 2.6 + 2.6, z + d / 2, { mat: 'metal' });
     else B.box('metal', hex, x + ox, i * 2.6, z, w, 2.6, d, { tint: 0.2 });
   }
 }
 function truck(B, x, z, rot, hex = 0x3d4532, cover = 0x4f5340) {
   const cs = Math.cos(rot), sn = Math.sin(rot), L = (lx, lz) => [x + lx * cs + lz * sn, z - lx * sn + lz * cs];
   const ex = Math.abs(cs) * 1.3 + Math.abs(sn) * 3.3, ez = Math.abs(sn) * 1.3 + Math.abs(cs) * 3.3, [cx, cz] = L(0, -0.5);
-  B.collider(cx - ex, 0, cz - ez, cx + ex, 2.9, cz + ez);
+  B.collider(cx - ex, 0, cz - ez, cx + ex, 2.9, cz + ez, { mat: 'metal' });
   if (B.prop('vehicle_truck', x, 0, z, rot, 1.18, { tint: hex === 0x3d4532 ? 0x5e6650 : 0x70757c })) return;
   const part = (k, h, lx, y, lz, w, hh, d) => { const [px, pz] = L(lx, lz); B.box(k, h, px, y, pz, w, hh, d, { rot, col: false }); };
   part('plain', 0x1c1d1f, 0, 0.55, 0, 1.2, 0.35, 6.2);
@@ -419,13 +429,31 @@ function truck(B, x, z, rot, hex = 0x3d4532, cover = 0x4f5340) {
   part('plain', hex, 0, 0.95, 1.0, 2.4, 0.25, 4.3); part('plain', cover, 0, 1.2, 1.0, 2.3, 1.6, 4.2);
 }
 const TREES = ['pine_1', 'pine_2'];
+const LOD_CELL = 16, lodKey = (x, z) => Math.floor((x + 200) / LOD_CELL) + '|' + Math.floor((z + 200) / LOD_CELL);
+const LOD_MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
+let LOD_GEO = null;
+function lodTree() { // ~60 triangles shaped like the pine model (7.3 m tall in model units): trunk + three foliage tiers
+  if (LOD_GEO) return LOD_GEO;
+  const col = (g, r, gr, b) => { const n = g.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = r; a[i * 3 + 1] = gr; a[i * 3 + 2] = b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g; };
+  const parts = [col(new THREE.CylinderGeometry(0.1, 0.24, 4.2, 5, 1, true).translate(0, 2.1, 0), 0.2, 0.12, 0.08)];
+  [[2.35, 2.6, 2.2], [1.8, 2.5, 3.8], [1.15, 2.4, 5.3]].forEach(([rad, h, y], i) => parts.push(col(new THREE.ConeGeometry(rad, h, 7, 1, true).rotateY(i * 0.5).translate(0, y + h / 2 - 0.6, 0), 0.085, 0.15, 0.07)));
+  LOD_GEO = mergeGeometries(parts.map((g) => { const t = g.toNonIndexed(); t.deleteAttribute('uv'); return t; }));
+  return LOD_GEO;
+}
+// swap tree cells between the full model and the stand-in by distance (called every few frames)
+export function updateLOD(W, cam) {
+  const d = W.lodDist || 34;
+  for (const k in W.lod) { const c = W.lod[k], dist = Math.hypot(c.x - cam.x, c.z - cam.z), near = dist < (c.near ? d + 3 : d - 3); if (near === c.near && c.init) continue; c.near = near; c.init = true; for (const m of c.full) m.visible = near; if (c.lod) c.lod.visible = !near; }
+}
 function tree(B, x, z, col = true) {
   const r = B.rng, h = 7 + r() * 5, tr = 0.2 + r() * 0.16;
   if (A.parts.pine_1) {
-    const k = col ? TREES[Math.floor(r() * TREES.length)] : 'pine_2', s = 1.25 + r() * 0.55;
-    B.prop(k, x, -0.1, z, r() * 6.283, s, { shadow: col, tint: [0x7c8c80, 0x6e7e74, 0x647268][Math.floor(r() * 3)] });
+    const k = col ? TREES[Math.floor(r() * TREES.length)] : 'pine_2', s = 1.25 + r() * 0.55, ry = r() * 6.283, tint = [0x7c8c80, 0x6e7e74, 0x647268][Math.floor(r() * 3)];
+    // interior trees: full model near the camera, low-poly stand-in beyond W.lodDist; the tree line outside the map is always low-poly
+    if (col) B.prop(k, x, -0.1, z, ry, s, { shadow: true, tint, cell: LOD_CELL });
+    const lk = col ? lodKey(x, z) : 'border'; (B.lodInst[lk] || (B.lodInst[lk] = [])).push({ m: M(x, -0.1, z, 0, ry, 0, s, s, s), tint });
     if (col) B.canopy.push(M(x, 4.6 * s, z, 0, 0, 0, 2.3 * s, 5.2 * s, 2.3 * s)); // cheap shadow-only stand-in for the foliage
-    if (col) B.collider(x - 0.3, 0, z - 0.3, x + 0.3, 6, z + 0.3);
+    if (col) B.collider(x - 0.3, 0, z - 0.3, x + 0.3, 6, z + 0.3, { mat: 'wood' });
     return;
   }
   B.geo('wood', 0x35291f, new THREE.CylinderGeometry(tr * 0.55, tr, h, 6), M(x, h / 2, z), { uv: 2 });
@@ -440,7 +468,7 @@ function rock(B, x, z, s, col = true) {
   if (A.parts.rock_medium_1) {
     const k = 'rock_medium_' + (1 + Math.floor(r() * 3)), b = A.parts[k].box, f = 2 / (b.max.x - b.min.x), ry = Math.floor(r() * 4) * Math.PI / 2;
     B.prop(k, x, -0.12 * sy, z, ry, [sx * f, sy * 0.95 / b.max.y, sz * f], { tint: 0x7a8086 });
-    if (col) B.collider(x - sx * 0.78, 0, z - sz * 0.78, x + sx * 0.78, sy * 0.9, z + sz * 0.78);
+    if (col) B.collider(x - sx * 0.86, 0, z - sz * 0.86, x + sx * 0.86, sy * 0.9, z + sz * 0.86, { mat: 'concrete' });
     return;
   }
   B.geo('concrete', 0x474b4c, new THREE.DodecahedronGeometry(1, 0), M(x, sy * 0.3, z, r() * 3, r() * 3, r() * 3, sx, sy, sz), { uv: 2 });
@@ -452,9 +480,9 @@ function bush(B, x, z) {
     for (let i = 0; i < 3; i++) B.geo('grass', 0x22351f, new THREE.IcosahedronGeometry(0.65 + r() * 0.35, 0), M(x + (r() - 0.5) * 0.9, 0.5 + r() * 0.3, z + (r() - 0.5) * 0.9, r() * 3, r() * 3, 0), { uv: 2 });
   B.collider(x - 0.8, 0, z - 0.8, x + 0.8, 1.3, z + 0.8, { solid: false, bullet: false });
 }
-function light(W, scene, hex, intensity, dist, x, y, z, dyn) {
+export function light(W, scene, hex, intensity, dist, x, y, z, dyn) {
   const l = new THREE.PointLight(hex, intensity, dist, 1.6);
-  l.position.set(x, y, z); scene.add(l);
+  l.position.set(x, y, z); scene.add(l); l.userData.base = intensity; W.lights.push(l);
   if (dyn) W.dyn.push({ l, base: intensity, kind: dyn });
   return l;
 }
@@ -470,7 +498,8 @@ function forest(B, W, scene) {
   }
   B.box('dirt', 0x463c2f, 0, 0, -12, 37, 0.015, 31, { col: false, tint: 0 });
   // perimeter fence with three openings
-  const fo = { sight: false, bullet: false }, fence = (ax, az, bx, bz, gaps) => {
+  // chain-link: see-through, but it stops bullets
+  const fo = { sight: false }, fence = (ax, az, bx, bz, gaps) => {
     wall(B, 'fence', 0x8a9096, ax, az, bx, bz, 2.4, gaps.map((g) => ({ ...g, top: 99 })), 0.1, fo);
     const alongX = az === bz, n = Math.round((alongX ? bx - ax : bz - az) / 3.7);
     for (let i = 0; i <= n; i++) {
@@ -501,7 +530,7 @@ function forest(B, W, scene) {
   for (const s of [-1, 1]) { B.box('wood', 0x4a3e2e, 14 + s * 1.65, 5.2, -1, 0.08, 0.9, 3.4, { col: false }); B.box('wood', 0x4a3e2e, 14, 5.2, -1 + s * 1.65, 3.4, 0.9, 0.08, { col: false }); }
   B.box('emis', 0xfff0c8, 12.5, 5.9, 0.6, 0.3, 0.3, 0.3, { col: false, tint: 0 });
   const sl = new THREE.SpotLight(0xffe9c0, 500, 60, 0.42, 0.6, 1.5);
-  sl.position.set(12.5, 6, 0.6); sl.target.position.set(1, 0, 11); scene.add(sl, sl.target);
+  sl.position.set(12.5, 6, 0.6); sl.target.position.set(1, 0, 11); scene.add(sl, sl.target); sl.userData.base = 500; W.lights.push(sl);
   // vehicles, cover, clutter
   truck(B, -9, -6, 0); truck(B, 5, -10.5, Math.PI / 2);
   crate(B, -2, -20.5, 1.2); crate(B, -0.8, -21.6, 1); crate(B, -2, -20.5, 0.8, 1.2); crate(B, 10, -12, 1.2); crate(B, 11.3, -12.3, 1);
@@ -531,7 +560,11 @@ function forest(B, W, scene) {
   B.box('dirt', 0x4a4033, 44, 0, -46, 9, 0.02, 9, { col: false, tint: 0 });
   crate(B, 48, -50, 1.1); crate(B, 40, -50.5, 0.9);
   // scatter: trees, rocks, logs, bushes
-  const clear = [[-6.6, 54, 5], [-38, 8, 7.5], [35, 14, 7.5], [44, -46, 7]];
+  const clear = [[-6.6, 54, 5], [-38, 8, 7.5], [35, 14, 7.5], [44, -46, 7], [54, 22, 4.5], [-54, -10, 4.5], [-46, 46, 6], [48, 44, 6], [-38.5, -40.5, 7.5]];
+  // remote bunker in the north-west woods (objective anchor)
+  room(B, 'concrete', 0x4f5350, -41.5, -43.5, -35.5, -39.5, 2.6, { s: [{ a: -39.5, b: -37.5 }], e: [{ a: -42.5, b: -41, sill: 1, top: 1.9 }] }); B.box('concrete', 0x464a47, -38.5, 2.6, -41.5, 6.6, 0.25, 4.6);
+  sandbags(B, -35, -37.2, 3, true); crate(B, -43.3, -38.5, 1.1); B.box('dirt', 0x463c2f, -38.5, 0, -39, 9, 0.015, 9, { col: false, tint: 0 });
+  B.box('dirt', 0x4a4033, -46, 0, 46, 8, 0.02, 8, { col: false, tint: 0 }); B.box('dirt', 0x4a4033, 48, 0, 44, 8, 0.02, 8, { col: false, tint: 0 });
   const ok = (x, z, m = 0) => {
     if (x > -21 - m && x < 21 + m && z > -30 - m && z < 6 + m) return false;
     for (const [cx, cz, cr] of clear) if (Math.hypot(x - cx, z - cz) < cr + m) return false;
@@ -565,14 +598,14 @@ function forest(B, W, scene) {
   for (let i = 0; i < 520; i++) { const x = (r() - 0.5) * 112, z = (r() - 0.5) * 112; if (ok(x, z, -1.5)) B.prop('grass_common_short', x, 0, z, r() * 6.283, [0.7 + r() * 0.6, 0.35 + r() * 0.3, 0.7 + r() * 0.6], { shadow: false, tint: 0x50604a }); }
   for (let i = 0; i < 110; i++) { const x = (r() - 0.5) * 108, z = (r() - 0.5) * 108; if (ok(x, z, 0)) B.prop('fern_1', x, 0, z, r() * 6.283, 0.09 + r() * 0.05, { shadow: false, tint: 0x5a6a52 }); }
   // outpost dressing: water tower, tyre stacks, pallets and road barriers at the gate (low enough to vault)
-  if (B.prop('watertower', 15.5, 0, -13.5, 0, 0.85, { tint: 0x8a8f94 })) B.collider(14.4, 0, -14.6, 16.6, 8, -12.4);
+  if (B.prop('watertower', 15.5, 0, -13.5, 0, 0.85, { tint: 0x8a8f94 })) { B.collider(14.4, 0, -14.6, 16.6, 5.4, -12.4, { sight: false, bullet: false, nocover: true }); B.collider(14.4, 5.4, -14.6, 16.6, 8, -12.4); } // open lattice legs, solid tank
   B.prop('wheels_stack', -16.8, 0, -16, 0.4, 1.5, { col: true, shrink: 0.9 }); B.prop('wheels_stack', 12.5, 0, -15.8, 1.2, 1.5, { col: true, shrink: 0.9 });
   B.prop('pallet', -2, 0, -20.5, 0, 1.4, {}); B.prop('pallet', 10.5, 0, -12.1, 0.2, 1.7, {});
-  B.prop('trafficbarrier_1', -1.9, 0, 9.5, 0.15, 1, { col: true, shrink: 0.85, sight: false, bullet: false }); B.prop('trafficbarrier_1', 2.2, 0, 12.5, -0.1, 1, { col: true, shrink: 0.85, sight: false, bullet: false });
+  B.prop('trafficbarrier_1', -1.9, 0, 9.5, 0.15, 1, { col: true, shrink: 0.85, sight: false }); B.prop('trafficbarrier_1', 2.2, 0, 12.5, -0.1, 1, { col: true, shrink: 0.85, sight: false });
   for (const [x0, z0, x1, z1] of [[-59, -59, 59, -58], [-59, 58, 59, 59], [-59, -59, -58, 59], [58, -59, 59, 59]]) B.collider(x0, 0, z0, x1, 12, z1, { sight: false });
   return {
     name: 'FOREST OUTPOST', bounds: { x0: -60, x1: 60, z0: -60, z1: 60 }, spawn: { x: -6.6, z: 54, yaw: 0 },
-    env: { fog: [0x0a1017, 0.021], bg: 0x070b12, hemi: [0x8096c0, 0x232c1c, 2.9], moon: [0xa4b9e6, 3.4, [-35, 60, 30]], viewRange: 40, detect: 0.75, shotMul: 1, amb: 'forest' },
+    env: { fog: [0x0a1017, 0.021], bg: 0x070b12, hemi: [0x8096c0, 0x232c1c, 2.9], moon: [0xa4b9e6, 3.4, [-35, 60, 30]], viewRange: 40, detect: 0.75, shotMul: 1, amb: 'forest', ground: 'dirt' },
     objective: { pos: [-7.3, 0.8, -23.3], kind: 'intel', hold: 0, prompt: 'Take intelligence package', text: 'Locate the intelligence package in the outpost command hut', done: 'INTEL SECURED' },
     extraction: { pos: [44, 0, -46], text: 'Reach the extraction flare in the north-east clearing' },
     routes: [
@@ -582,6 +615,19 @@ function forest(B, W, scene) {
     ],
     posts: { objective: [[-9.5, -14.5], [-16.5, -21], [-10, -20.5], [-3.5, -19]], entrance: [[-4.5, 1.5, 'south gate'], [16, -12, 'east breach'], [-12, -25.6, 'north-west gap'], [-16.5, -6.5, 'west gap'], [12, 2, 'watchtower']] },
     panel: { x: 7.5, z: -16.4, face: [0, -1], n: 'barracks alarm' }, guards: 10,
+    // mission anchors: curated objective zones (at = object position [x, y, z], posts = guard positions)
+    anchors: [
+      { id: 'hut', name: 'command hut', at: [-7.3, 0.8, -23.3], stand: [-7.3, -22], indoor: 1, posts: [[-9.5, -14.5], [-16.5, -21], [-10, -20.5], [-3.5, -19]] },
+      { id: 'barracks', name: 'barracks', at: [12.8, 0, -21.6], stand: [12, -20.6], indoor: 1, posts: [[10, -15.5], [17, -21], [8, -20.5]] },
+      { id: 'tower', name: 'watchtower', at: [11.6, 0, 2.2], stand: [10.8, 1.6], indoor: 1, posts: [[9.5, -2], [16.5, 2.4], [12, 6]] },
+      { id: 'ruin', name: 'western ruin', at: [-40.3, 0, 8], stand: [-39.5, 7], indoor: 1, posts: [[-38, 2.5], [-36, 11], [-33, 6]] },
+      { id: 'camp', name: 'eastern camp', at: [36.3, 0, 13.6], stand: [35.6, 14.3], indoor: 1, posts: [[33, 9], [39.5, 11.5], [30.5, 15]] },
+      { id: 'motorpool', name: 'vehicle park', at: [-6.1, 0, -4], stand: [-5.5, -3.2], posts: [[-3, -3], [-12, -1.5], [-6, -10.5]] },
+      { id: 'generator', name: 'generator yard', at: [3.4, 0, -17.5], stand: [3.4, -18.5], indoor: 1, posts: [[0, -14], [6.5, -14.5], [-1, -18.5]] },
+      { id: 'bunker', name: 'remote bunker', at: [-39.8, 0, -42.2], stand: [-39, -41.5], indoor: 1, posts: [[-38.5, -37.5], [-34, -41.5], [-37, -41.5]] },
+    ],
+    entries: [{ id: 'south', name: 'south road', x: -6.6, z: 54, yaw: 0 }, { id: 'east', name: 'eastern woods', x: 54, z: 22, yaw: Math.PI / 2 }, { id: 'west', name: 'western woods', x: -54, z: -10, yaw: -Math.PI / 2 }],
+    exits: [{ id: 'ne', name: 'north-east clearing', pos: [44, 0, -46] }, { id: 'sw', name: 'south-west clearing', pos: [-46, 0, 46] }, { id: 'se', name: 'south-east clearing', pos: [48, 0, 44] }],
     reinforce: [{ x: -30, z: -55, n: 'north treeline' }, { x: -54, z: -18, n: 'western treeline' }, { x: -44, z: 46, n: 'south-west treeline' }],
     pickups: [['med', 12.6, -23.6], ['med', 36.6, 16.4], ['ammo', -40, 6.5], ['ammo', -1, -19]],
   };
@@ -680,7 +726,7 @@ function warehouse(B, W, scene) {
   B.box('emis', 0x163a20, -43, 0, 4, 3.4, 0.03, 3.4, { col: false, tint: 0 });
   return {
     name: 'INDUSTRIAL WAREHOUSE', bounds: { x0: -48, x1: 48, z0: -32, z1: 32 }, spawn: { x: 44.5, z: 27, yaw: Math.PI / 2 },
-    env: { fog: [0x06080b, 0.012], bg: 0x05070a, hemi: [0x5a6680, 0x16181c, 0.75], moon: [0x8fa6d6, 1.5, [30, 60, -22]], viewRange: 44, detect: 1, shotMul: 0.85, amb: 'warehouse' },
+    env: { fog: [0x06080b, 0.012], bg: 0x05070a, hemi: [0x5a6680, 0x16181c, 0.75], moon: [0x8fa6d6, 1.5, [30, 60, -22]], viewRange: 44, detect: 1, shotMul: 0.85, amb: 'warehouse', ground: 'concrete' },
     objective: { pos: [-34.3, 0.8, -22], kind: 'terminal', hold: 3, prompt: 'Hold to access secured terminal', text: 'Access the secured terminal in the warehouse office', done: 'DATA EXTRACTED' },
     extraction: { pos: [-43, 0, 4], text: 'Exfiltrate through the west back lot' },
     routes: [
@@ -691,16 +737,31 @@ function warehouse(B, W, scene) {
     ],
     posts: { objective: [[-28, -19], [-27.5, -11.3], [-19.2, -19], [-24, -21]], entrance: [[18, -10, 'north loading door'], [18, 10, 'south loading door'], [-33, 0, 'west door'], [5, -23.5, 'north door'], [-7, 23.5, 'south door']] },
     panel: { x: -19.5, z: -15, face: [-1, 0], n: 'office alarm' }, guards: 10,
+    anchors: [
+      { id: 'office', name: 'administration office', at: [-34.3, 0.8, -22], stand: [-33, -22], indoor: 1, posts: [[-28, -19], [-27.5, -11.3], [-19.2, -19], [-24, -21]] },
+      { id: 'machine', name: 'machine room', at: [-27, 0, 15.2], stand: [-27.8, 16], indoor: 1, posts: [[-28, 13.5], [-27, 21], [-22.5, 16.5]] },
+      { id: 'dock', name: 'loading dock', at: [15.6, 1, 23.9], stand: [15.6, 22.9], indoor: 1, posts: [[12, 22.5], [18.4, 21.6], [9.5, 17.5]] },
+      { id: 'containers', name: 'container storage', at: [11.3, 0, -16.2], stand: [11.3, -15.3], indoor: 1, posts: [[11, -22.2], [16.8, -13.5], [1, -15]] },
+      { id: 'westbay', name: 'west bay', at: [-33.7, 0, -5], stand: [-32.8, -4.4], indoor: 1, posts: [[-28, -8], [-25, 2], [-31, 8.6]] },
+      { id: 'yard', name: 'loading yard', at: [31.8, 0, 19], stand: [32.6, 18.2], posts: [[33, 12.5], [25.5, 14], [38, 19]] },
+      { id: 'alley', name: 'north service alley', at: [-22, 0, -30.3], stand: [-22, -29.3], posts: [[-28, -28.8], [-14, -28.8], [-22, -27.5]] },
+    ],
+    entries: [{ id: 'yard', name: 'south-east yard', x: 44.5, z: 27, yaw: Math.PI / 2 }, { id: 'nw', name: 'north-west corner', x: -45, z: -29, yaw: -Math.PI / 2 }, { id: 'south', name: 'south alley', x: -24, z: 29.4, yaw: -Math.PI / 2 }],
+    exits: [{ id: 'west', name: 'west back lot', pos: [-43, 0, 4] }, { id: 'east', name: 'east gate', pos: [44.5, 0, -2] }, { id: 'north', name: 'north alley', pos: [17.5, 0, -29.2] }],
     reinforce: [{ x: 45, z: -1, n: 'east gate' }, { x: 45, z: -28, n: 'north-east service gate' }],
     pickups: [['med', -33.8, 12.2], ['med', -22, -24], ['ammo', -17.6, -2.6], ['ammo', 23, 16]],
   };
 }
 
+// builder texture kind -> bullet impact surface
+const SURF = { metal: 'metal', fence: 'metal', wood: 'wood', concrete: 'concrete', plain: 'plastic', dirt: 'dirt', grass: 'dirt', emis: 'metal' };
+const MAPS = {}; // extra maps registered by other modules (e.g. the training range)
+export function registerMap(id, fn) { MAPS[id] = fn; }
 export function buildWorld(id, scene) {
-  const B = new Builder(), W = { id, dyn: [] };
-  Object.assign(W, id === 'forest' ? forest(B, W, scene) : warehouse(B, W, scene));
+  const B = new Builder(), W = { id, dyn: [], lights: [] };
+  Object.assign(W, (MAPS[id] || (id === 'forest' ? forest : warehouse))(B, W, scene));
   W.meshes = B.finish(scene);
-  W.colliders = B.col; W.nav = new Nav(B.col, W.bounds); W.cover = buildCover(B.col, W.nav);
+  W.colliders = B.col; W.nav = new Nav(B.col, W.bounds); W.cover = buildCover(B.col, W.nav); W.lod = B.lod;
   const e = W.env;
   scene.fog = new THREE.FogExp2(e.fog[0], e.fog[1]); scene.background = new THREE.Color(e.bg);
   W.hemi = new THREE.HemisphereLight(e.hemi[0], e.hemi[1], e.hemi[2]); scene.add(W.hemi);

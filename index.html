@@ -58,6 +58,8 @@ h1 span{color:var(--g)}
 .hp{position:absolute;background:var(--p);border-left:2px solid var(--g);padding:8px 12px}
 #obj{top:18px;left:18px;max-width:320px;font-size:13px}
 #obj i{display:block;font-style:normal;font-size:10px;letter-spacing:.3em;color:var(--g);margin-bottom:3px}
+#objt div{margin-top:2px}.o-done{color:#6f8a76;text-decoration:line-through}.o-now{color:#fff}.o-todo{color:#8b989c}.o-locked{color:#5f6c70}
+#brl div{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.07);color:#dfe7ea}#brl i{font-style:normal;font-size:10px;letter-spacing:.3em;color:var(--a);margin-right:10px}
 #sec{top:18px;left:50%;transform:translateX(-50%);border-left:0;border-top:2px solid var(--g);font-size:11px;letter-spacing:.34em;padding:6px 18px;text-align:center;color:var(--g)}
 #sec.l1{color:var(--a);border-color:var(--a)}#sec.l2{color:var(--r);border-color:var(--r)}#sec.l3{color:#fff;border-color:var(--r);background:rgba(160,20,10,.75);animation:bl 1s steps(2) infinite}
 @keyframes bl{50%{background:rgba(90,10,6,.75)}}
@@ -72,6 +74,7 @@ h1 span{color:var(--g)}
 #wn{font-size:12px;letter-spacing:.26em;color:#9aa7ab}
 #am{font-size:34px;font-weight:700;color:#fff;line-height:1.1}#am span{font-size:17px;color:#8b989c}
 #watt{font-size:9.5px;letter-spacing:.16em;color:var(--a);min-height:12px}
+#ammohint{font-size:10px;letter-spacing:.3em;color:#e8b04a;min-height:0}
 #slots{font-size:10px;letter-spacing:.12em;color:#5f6c70;margin-top:3px}#slots b{color:var(--g)}
 #equip{bottom:18px;right:266px;border-left:0;border-right:2px solid rgba(255,255,255,.2);font-size:10.5px;letter-spacing:.14em;color:#6d7a7f;text-align:right;line-height:1.75}
 #equip b{color:#fff}#equip .s{color:var(--g)}
@@ -85,7 +88,11 @@ h1 span{color:var(--g)}
 #scope{position:fixed;inset:0;display:none;background:radial-gradient(circle at center,transparent 0,transparent 32vh,#000 32.6vh)}
 #scope:before,#scope:after{content:"";position:absolute;background:rgba(0,0,0,.85)}
 #scope:before{left:0;right:0;top:50%;height:1px}#scope:after{top:0;bottom:0;left:50%;width:1px}
+#scope u{position:absolute;background:#000}#scope .l{left:calc(50% - 32vh);width:22vh;top:calc(50% - 1.5px);height:3px}#scope .r{left:calc(50% + 10vh);width:22vh;top:calc(50% - 1.5px);height:3px}#scope .b{top:calc(50% + 10vh);height:22vh;left:calc(50% - 1.5px);width:3px}
+#scope .m{left:calc(50% - 8vh);width:16vh;top:calc(50% - 3px);height:7px;background:repeating-linear-gradient(90deg,rgba(0,0,0,.9) 0 1px,transparent 1px 2vh)}
+#zoomv{position:absolute;left:calc(50% + 12vh);top:calc(50% + 12vh);color:#e8f0ea;font-size:15px;letter-spacing:.12em;text-shadow:0 0 3px #000}#zoomv i{font-style:normal;font-size:9.5px;color:var(--a);letter-spacing:.2em;margin-left:8px}
 #hitm{position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px;opacity:0;background:linear-gradient(45deg,transparent 45%,#fff 45% 55%,transparent 55%),linear-gradient(-45deg,transparent 45%,#fff 45% 55%,transparent 55%);-webkit-mask:radial-gradient(circle,transparent 4px,#000 5px);mask:radial-gradient(circle,transparent 4px,#000 5px)}
+#hitm.h{background:linear-gradient(45deg,transparent 43%,#ffd060 43% 57%,transparent 57%),linear-gradient(-45deg,transparent 43%,#ffd060 43% 57%,transparent 57%)}
 #hitm.k{background:linear-gradient(45deg,transparent 43%,#ff5a4a 43% 57%,transparent 57%),linear-gradient(-45deg,transparent 43%,#ff5a4a 43% 57%,transparent 57%)}
 #prompt{position:absolute;left:50%;top:60%;transform:translateX(-50%);background:var(--p);padding:8px 16px;font-size:13px;border:1px solid var(--l);display:none}
 #prompt b{color:var(--a);border:1px solid var(--a);padding:0 6px;margin-right:8px}
@@ -102,6 +109,8 @@ h1 span{color:var(--g)}
 .ind{position:absolute;left:50%;top:50%;width:0;height:0;opacity:0}
 .ind:before{content:"";position:absolute;left:-46px;top:-150px;width:92px;height:16px;border-top:4px solid currentColor;border-radius:50%/100% 100% 0 0}
 #flashov{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:6}
+#perfov{position:fixed;right:18px;top:130px;z-index:30;display:none;pointer-events:none;background:rgba(0,0,0,.6);color:#9fe8b0;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;padding:6px 9px;letter-spacing:.05em}
+.row.chk{cursor:pointer;margin-top:8px}.row.chk input{flex:none;width:15px;height:15px}.row.chk span{width:auto;letter-spacing:.08em}
 #nv{position:fixed;inset:0;pointer-events:none;display:none;z-index:5;mix-blend-mode:multiply}
 #nv.on{display:block}
 #nv .t{position:absolute;inset:0;background:#4dff74}
@@ -114,8 +123,9 @@ h1 span{color:var(--g)}
 <body>
 <canvas id="c"></canvas>
 <div id="nv"><div class="t"></div><div class="n" id="nvn"></div><div class="v"></div></div>
-<div id="scope"></div>
+<div id="scope"><u class="l"></u><u class="r"></u><u class="b"></u><u class="m"></u><div id="zoomv"></div></div>
 <div id="flashov"></div>
+<div id="perfov"></div>
 
 <div id="hud">
   <div id="vig"></div><div id="stimv"></div>
@@ -125,7 +135,7 @@ h1 span{color:var(--g)}
   <div class="hp" id="stat"></div>
   <div class="hp" id="health"><i>VITALS</i><span id="hpn">100</span><div id="hpb"><div id="hpf"></div></div><div id="medi"></div></div>
   <div class="hp" id="equip"></div>
-  <div class="hp" id="weap"><div id="wn"></div><div id="am"></div><div id="watt"></div><div id="slots"></div></div>
+  <div class="hp" id="weap"><div id="wn"></div><div id="am"></div><div id="watt"></div><div id="ammohint"></div><div id="slots"></div></div>
   <div id="cross"><u class="d"></u><u id="c0"></u><u id="c1"></u><u id="c2"></u><u id="c3"></u></div>
   <div id="ret"></div>
   <div id="hitm"></div>
@@ -145,15 +155,18 @@ h1 span{color:var(--g)}
     <div class="sub">TACTICAL INFILTRATION</div>
     <button class="nav sel" data-tab="play">PLAY</button>
     <button class="nav" data-tab="loadout">LOADOUT</button>
+    <button class="nav" data-tab="training">TRAINING</button>
     <button class="nav" data-tab="settings">SETTINGS</button>
     <button class="nav" data-tab="controls">CONTROLS</button>
-    <div id="ver">V2.0<br>SINGLE OPERATOR</div>
+    <div id="ver">V2.1<br>SINGLE OPERATOR</div>
   </div>
   <div id="content">
     <div class="tab on" id="t-play">
       <div class="grp"><label>MAP</label><div class="opts" data-k="map">
         <button class="opt sel" data-v="forest">Forest Outpost<small>night · fog · open approaches</small></button>
         <button class="opt" data-v="warehouse">Industrial Warehouse<small>interior · close quarters</small></button></div></div>
+      <div class="grp"><label>MISSION TYPE</label><div class="opts" data-k="mission"></div></div>
+      <div class="grp"><label>OPERATION LENGTH</label><div class="opts" data-k="length"></div></div>
       <div class="grp"><label>ENEMY INTELLIGENCE</label><div class="opts" data-k="ai">
         <button class="opt" data-v="recruit">Recruit<small>slow to react, sloppy cover, poor radio discipline</small></button>
         <button class="opt sel" data-v="tactical">Tactical<small>lean-peeks, flanks, defends the objective</small></button>
@@ -173,6 +186,19 @@ h1 span{color:var(--g)}
       <div class="grp"><label>SLOT 3 — MELEE</label><div class="opts"><button class="opt sel">Combat knife<small>silent · lethal from behind or on unaware guards</small></button></div></div>
       <div class="grp"><label>EQUIPMENT KIT</label><div class="opts" data-k="kit"></div></div>
     </div>
+    <div class="tab" id="t-training">
+      <div class="panel" style="margin-bottom:14px"><h3>TRAINING RANGE</h3>
+        <p>A 100 m range for testing weapons without a mission. Uses your current loadout; ammunition and grenades are unlimited.</p>
+        <div class="keys" style="margin-top:10px">
+          <b>Targets</b><span>10 / 25 / 50 / 75 / 100 m, two moving, two live dummies for hit zones</span>
+          <b>Cover lane</b><span>targets behind a steel plate and a chain-link fence — rounds must stop</span>
+          <b>Grenade pit</b><span>sandbagged targets on the right, one protected behind a wall</span>
+          <b>5 / 6</b><span>cycle the primary / secondary weapon</span>
+          <b>7 / 8</b><span>cycle optic / toggle suppressor on the weapon in hand</span>
+          <b>Wheel</b><span>adjust magnification while aiming through a variable scope</span>
+        </div></div>
+      <button class="btn" id="train">ENTER TRAINING RANGE</button>
+    </div>
     <div class="tab" id="t-settings">
       <div class="grp"><label>CONTROLS</label>
         <div class="row"><span>MOUSE SENSITIVITY</span><input type="range" id="sens" min="0.3" max="2.5" step="0.05" value="1"><output id="sensv">1.00</output></div>
@@ -182,7 +208,10 @@ h1 span{color:var(--g)}
       <div class="grp"><label>GRAPHICS QUALITY</label><div class="opts" data-k="quality">
         <button class="opt" data-v="low">Low<small>no shadows, 1x resolution</small></button>
         <button class="opt sel" data-v="med">Medium<small>shadows, balanced</small></button>
-        <button class="opt" data-v="high">High<small>sharp shadows, higher resolution</small></button></div></div>
+        <button class="opt" data-v="high">High<small>sharp shadows, higher resolution</small></button></div>
+        <label class="row chk"><input type="checkbox" id="adchk"><span>ADAPTIVE RESOLUTION — lower render scale briefly when frames run slow</span></label>
+        <label class="row chk"><input type="checkbox" id="ovchk"><span>PERFORMANCE OVERLAY (F3)</span></label>
+        <label class="row chk"><input type="checkbox" id="rawchk"><span>RAW MOUSE INPUT (no OS acceleration, where supported)</span></label></div>
     </div>
     <div class="tab" id="t-controls">
       <div class="panel"><div class="keys">
@@ -200,6 +229,10 @@ h1 span{color:var(--g)}
     </div>
   </div>
 </div>
+
+<div class="ov" id="briefov"><div class="box" style="width:min(520px,92%)"><h2 id="brt" style="font-size:26px"></h2><div class="sub" id="brs" style="margin-bottom:0"></div>
+  <div class="panel"><h3>OBJECTIVE SEQUENCE</h3><div id="brl"></div></div>
+  <button class="btn" id="brgo">BEGIN MISSION</button><button class="btn alt" id="brback">RETURN TO MENU</button></div></div>
 
 <div class="ov" id="pause"><div class="box"><h2>PAUSED</h2><div class="sub" id="phint">MISSION ON HOLD</div>
   <button class="btn" id="resume">RESUME</button><button class="btn alt" id="prestart">RESTART MISSION</button><button class="btn alt" id="pmenu">RETURN TO MENU</button></div></div>

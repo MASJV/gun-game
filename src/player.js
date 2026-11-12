@@ -18,7 +18,7 @@ export class Player {
     this.slots = ids.map((id) => {
       const att = loadout.att[id] || {}, st = statsFor(id, att), view = buildView(id, att);
       view.visible = false; G.wscene.add(view);
-      return { id, st, view, mag: st.mag, reserve: st.reserve };
+      return { id, st, view, mag: st.mag, reserve: st.reserve, zoom: st.optic && st.optic.zoom ? st.optic.zoom[0] : 0 };
     });
     this.cur = 0; this.slots[0].view.visible = true; this.shown = 0;
     this.next = -1; this.swT = 0; this.relT = 0; this.reloading = false; this.fireT = 0; this.adsF = 0;
@@ -30,7 +30,14 @@ export class Player {
     gr.addColorStop(0, 'rgba(255,255,230,1)'); gr.addColorStop(0.3, 'rgba(255,200,90,.8)'); gr.addColorStop(1, 'rgba(255,120,20,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
     this.flash = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.flash.visible = false; this.flashT = 0; G.wscene.add(this.flash);
+    this.boltT = 0; this.relDur = 1; this.relIn = false; this.pumpT = 0; this.breath = 4; this.steady = false; this.swT2 = 0;
     this.fwd = new THREE.Vector3(); this._v = new THREE.Vector3(); this._v2 = new THREE.Vector3(); this.muzzleW = new THREE.Vector3(); this.laserW = new THREE.Vector3(); this.eyePos = new THREE.Vector3();
+  }
+  setSlot(i, id, att) { // replace the weapon in a slot (training range bench)
+    const G = this.g, old = this.slots[i], st = statsFor(id, att), view = buildView(id, att);
+    G.wscene.remove(old.view); view.visible = this.shown === i; G.wscene.add(view);
+    this.slots[i] = { id, st, view, mag: st.mag, reserve: st.reserve, zoom: st.optic && st.optic.zoom ? st.optic.zoom[0] : 0 };
+    this.reloading = false; this.boltT = 0; this.pumpT = 0; this.fireT = 0; this.adsF = 0;
   }
   get slot() { return this.slots[this.cur]; }
   get w() { return this.slots[this.cur].st; }
@@ -47,13 +54,20 @@ export class Player {
   reload() {
     const s = this.slot;
     if (this.busy() || s.st.melee || s.mag >= s.st.mag || s.reserve <= 0) return;
-    this.reloading = true; this.relT = s.st.reload; this.g.audio.reload(s.st.reload, s.st.shells);
+    this.reloading = true; this.relT = this.relDur = s.st.reload; this.relIn = false; this.g.audio.reload(s.st.reload, s.st.rk, s.st.ins);
   }
   damage(d, from, info) {
     if (this.dead) return;
     this.hp -= d; this.sinceHit = 0; this.lastHit = info; this.g.onHurt(from, d);
     if (this.hp <= 0) { this.hp = 0; this.dead = true; }
   }
+  // mouse wheel while aiming through a variable scope: 0.25x steps inside the optic's range
+  zoomStep(dir) {
+    const s = this.slot, o = s.st.optic;
+    if (s.st.melee || !o || !o.zoom || o.zoom[1] <= o.zoom[0] || this.adsF < 0.5) return false;
+    s.zoom = clamp(Math.round((s.zoom + dir * 0.25) * 4) / 4, o.zoom[0], o.zoom[1]); return true;
+  }
+  adsFov() { const s = this.slot, o = s.st.optic; return o.zoom ? (2 * Math.atan(Math.tan((this.g.fov * Math.PI) / 360) / s.zoom) * 180) / Math.PI : o.fov; } // true optical magnification
   cycleThrow() {
     const i = THROW.indexOf(this.throwSel);
     for (let k = 1; k <= 3; k++) { const t = THROW[(i + k) % 3]; if (this.inv[t] > 0) { this.throwSel = t; break; } }
@@ -83,7 +97,7 @@ export class Player {
   update(dt) {
     const G = this.g, inp = G.inp, k = inp.k, s = this.slot, w = s.st;
     // look
-    const zoom = 1 + (w.optic ? w.optic.fov / 75 - 1 : 0) * this.adsF, sens = 0.0022 * G.sens * (w.melee ? 1 : zoom);
+    const zoom = w.melee ? 1 : 1 + (Math.tan((this.adsFov() * Math.PI) / 360) / Math.tan((G.fov * Math.PI) / 360) - 1) * this.adsF, sens = 0.0022 * G.sens * zoom; // sensitivity follows magnification
     this.yaw -= inp.mx * sens; this.pitch = clamp(this.pitch - inp.my * sens, -1.5, 1.5);
     this.swayX += (clamp(-inp.mx * 0.0005, -0.03, 0.03) - this.swayX) * Math.min(1, dt * 10);
     this.swayY += (clamp(inp.my * 0.0005, -0.03, 0.03) - this.swayY) * Math.min(1, dt * 10);
@@ -164,22 +178,33 @@ export class Player {
       this.swT -= dt;
       if (this.swT <= 0.2 && this.next >= 0) { this.cur = this.next; this.next = -1; this.show(this.cur); }
     }
-    if (this.reloading) {
-      this.relT -= dt;
+    if (this.reloading) { // ammunition changes at the insert stage of the animation, not before
+      this.relT -= dt; const prog = 1 - this.relT / this.relDur;
+      if (!this.relIn && prog >= w.ins) {
+        this.relIn = true;
+        if (w.shells) { s.mag++; s.reserve--; } else { const n = Math.min(w.mag - s.mag, s.reserve); s.mag += n; s.reserve -= n; }
+      }
       if (this.relT <= 0) {
-        if (w.shells) { s.mag++; s.reserve--; if (s.mag < w.mag && s.reserve > 0 && !inp.lmb) { this.relT = w.reload; G.audio.click(0.45); } else this.reloading = false; }
-        else { const n = Math.min(w.mag - s.mag, s.reserve); s.mag += n; s.reserve -= n; this.reloading = false; }
+        if (w.shells && s.mag < w.mag && s.reserve > 0 && !inp.lmb) { this.relT = this.relDur = w.reload; this.relIn = false; G.audio.reload(w.reload, 'shell', w.ins); }
+        else { this.reloading = false; if (w.shells) { this.pumpT = 0.45; G.audio.pump(); } }
       }
     }
+    if (this.pumpT > 0) this.pumpT -= dt;
+    if (this.boltT > 0) this.boltT -= dt;
     const ads = inp.rmb && !this.sprinting && this.swT <= 0 && !this.reloading && !this.use && !w.melee && !this.mantle;
     this.adsF = clamp(this.adsF + ((ads ? 1 : -1) * dt) / (w.adsT || 0.15), 0, 1);
     this.scoped = !w.melee && w.optic.ret === 'scope' && this.adsF > 0.9;
+    // scope sway grows with magnification and movement; hold Shift to steady your breath for a few seconds
+    this.steady = this.scoped && !!(k.ShiftLeft || k.ShiftRight) && this.breath > 0;
+    this.breath = clamp(this.breath + (this.steady ? -dt : dt * 0.6), 0, 4); this.swT2 += dt;
+    const sa = this.scoped ? 0.00085 * s.zoom * (this.crouch ? 0.55 : 1) * (1 + this.speed * 0.9) * (this.steady ? 0.18 : 1) : 0;
+    this.scopeX = Math.sin(this.swT2 * 1.07) * sa + Math.sin(this.swT2 * 2.3) * sa * 0.3; this.scopeY = Math.sin(this.swT2 * 0.81 + 1.3) * sa * 0.8;
     this.fireT -= dt;
     if (this.fireT < -0.22) this.burst = 0;
     const trig = w.auto ? inp.lmb : inp.lmbPressed;
-    if (trig && this.fireT <= 0 && this.swT <= 0 && !this.use && !this.mantle) {
+    if (trig && this.fireT <= 0 && this.boltT <= 0 && this.pumpT <= 0 && this.swT <= 0 && !this.use && !this.mantle) {
       if (w.melee) this.startUse('melee');
-      else if (this.reloading) { if (w.shells && s.mag > 0) this.reloading = false; }
+      else if (this.reloading) { if (w.shells && s.mag > 0) { this.reloading = false; this.pumpT = 0.4; G.audio.pump(); } } // firing interrupts shell loading
       else if (s.mag > 0) this.shoot();
       else { if (inp.lmbPressed) G.audio.click(0.5); this.reload(); }
     }
@@ -191,8 +216,8 @@ export class Player {
     const cam = G.camera, bobY = Math.sin(this.bob * 2) * 0.028 * Math.min(1, mv) * (1 - this.adsF * 0.6), bobX = Math.cos(this.bob) * 0.02 * Math.min(1, mv);
     const sh = this.shake * 0.05;
     cam.position.set(p.x + cy * bobX + this.leanX + (Math.random() - 0.5) * sh, p.y + this.eye + bobY - this.dip - Math.abs(off) * 0.08 + (Math.random() - 0.5) * sh, p.z - sy * bobX + this.leanZ);
-    cam.rotation.set(this.pitch + this.rp, this.yaw + this.ry, -off * 0.3);
-    const fov = G.fov + ((w.melee ? G.fov : w.optic.fov) - G.fov) * this.adsF + this.sprintF * 4;
+    cam.rotation.set(this.pitch + this.rp + (this.scopeY || 0), this.yaw + this.ry + (this.scopeX || 0), -off * 0.3);
+    const fov = G.fov + ((w.melee ? G.fov : this.adsFov()) - G.fov) * this.adsF * this.adsF * (3 - 2 * this.adsF) + this.sprintF * 4;
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
     cam.updateMatrixWorld();
     cam.getWorldDirection(this.fwd); this.eyePos.copy(cam.position);
@@ -201,6 +226,7 @@ export class Player {
   shoot() {
     const G = this.g, s = this.slot, w = s.st, cam = G.camera;
     s.mag--; this.fireT = Math.max(this.fireT, -0.02) + 60 / w.rpm; this.noSprint = 0.3; this.burst++;
+    if (w.bolt && s.mag > 0) { this.boltT = w.bolt; G.audio.bolt(); } else if (w.pellets && s.mag > 0) { this.pumpT = 0.5; G.audio.pump(0.12); }
     const sp = (this.spread * Math.PI) / 180;
     for (let i = 0; i < (w.pellets || 1); i++) {
       const ang = Math.random() * 6.283, rad = Math.sqrt(Math.random()) * sp;
@@ -212,7 +238,7 @@ export class Player {
     const hz = w.id === 'ak' && n > 4 ? Math.sin(n * 0.8) * 1.5 + (Math.random() - 0.5) : (Math.random() - 0.5) * 2;
     this.ry += ((hz * w.recoilH) * Math.PI) / 180 * ar;
     this.kick = Math.min(0.13, this.kick + w.kick);
-    if (!w.sup) { this.flashT = 0.045; this.flash.rotation.z = Math.random() * 6; this.flash.scale.setScalar((w.pellets ? 1.3 : 0.7) + Math.random() * 0.6); G.fx.muzzle(cam.position); }
+    if (!w.sup) { this.flashT = 0.045; this.flash.rotation.z = Math.random() * 6; this.flash.scale.setScalar(w.flash * (0.8 + Math.random() * 0.45)); G.fx.muzzle(cam.position, w.flash); }
     G.audio.shot(w.id, w.sup); G.sound(this.pos, w.noise * G.world.env.shotMul, 'shot'); G.stats.shots++;
     const v = s.view; G.fx.shell(this._v.copy(v.eject).applyMatrix4(v.matrixWorld).applyQuaternion(cam.quaternion).add(cam.position), this._v2.set(1, 0.6, 0).applyQuaternion(cam.quaternion));
   }
@@ -224,13 +250,25 @@ export class Player {
     x += this.swayX * k + bobX * 0.5 * k; y += this.swayY * k + bobY * 0.45 * k - this.dip * 0.4 + br;
     z += this.kick * (1 - A * 0.35); rx += this.kick * 1.0 * (1 - A * 0.65);
     if (this.swT > 0) { const t = Math.sin((1 - this.swT / 0.4) * Math.PI); y -= t * 0.3; rx -= t * 0.7; }
-    let lhY = 0, lhZ = 0;
-    if (this.reloading) {
-      const t = w.shells ? 0.6 + 0.4 * Math.sin((1 - this.relT / w.reload) * Math.PI) : Math.sin(Math.min(1, (1 - this.relT / w.reload) * 1.08) * Math.PI);
-      y -= t * 0.07; rx += t * 0.42; rz += t * 0.45; x -= t * 0.03;
-      const m = w.shells ? Math.sin((1 - this.relT / w.reload) * Math.PI) : Math.sin(clamp((1 - this.relT / w.reload - 0.12) / 0.6, 0, 1) * Math.PI);
-      lhY = -m * 0.2; lhZ = m * 0.12;
+    let lhX = 0, lhY = 0, lhZ = 0, magOn = false;
+    if (this.reloading) { // staged reload: hand to magazine, old one out, new one in, back to the fore-end, charge
+      const u = clamp(1 - this.relT / this.relDur, 0, 1), k = w.rk, tilt = Math.sin(Math.min(1, u * 1.04) * Math.PI), W = v.magWell, R = v.lhRest;
+      if (k === 'shell') { y += 0.01; rx += 0.1; rz += 0.3; x -= 0.03; } else if (k === 'pistol') { y += tilt * 0.03; rx += tilt * 0.28; rz += tilt * 0.3; x -= tilt * 0.04; } else { y += tilt * 0.015; rx += tilt * 0.12; rz += tilt * 0.42; x -= tilt * 0.05; }
+      const dx = W.x - R.x, dy = W.y - R.y, dz = W.z - R.z, ins = w.ins, sm = (t) => t * t * (3 - 2 * t);
+      if (k === 'shell') { const t = u < ins ? sm(u / ins) : 1 - sm((u - ins) / (1 - ins)); lhX = dx * t; lhY = dy * t - (1 - t) * 0.1 * Math.sin(u * Math.PI); lhZ = dz * t; magOn = u < ins; }
+      else {
+        const t1 = ins * 0.3, t2 = ins * 0.55, t3 = ins * 0.72, t5 = Math.min(0.97, ins + 0.2), low = k === 'pistol' ? 0.16 : 0.22;
+        let a = 0, d = 0; // a: 0 = rest .. 1 = at the magazine well; d: how far the hand has dropped below it
+        if (u < t1) a = sm(u / t1); else if (u < t2) { a = 1; d = sm((u - t1) / (t2 - t1)); magOn = true; } else if (u < t3) { a = 1; d = 1; magOn = u > (t2 + t3) / 2; }
+        else if (u < ins) { a = 1; d = 1 - sm((u - t3) / (ins - t3)); magOn = true; } else if (u < t5) a = 1 - sm((u - ins) / (t5 - ins));
+        lhX = dx * a - d * 0.03; lhY = dy * a - d * low; lhZ = dz * a + d * 0.06;
+        if (u > t5 && k !== 'pistol') { const c = Math.sin(clamp((u - t5) / (1 - t5), 0, 1) * Math.PI); z += c * 0.03; rz -= c * 0.25; } // rack the action
+        if (u > ins && k === 'pistol') { const c = Math.sin(clamp((u - ins) / (1 - ins), 0, 1) * Math.PI); z -= c * 0.02; rx -= c * 0.15; } // slide forward
+      }
     }
+    if (this.boltT > 0 && w.bolt) { const b = 1 - this.boltT / w.bolt, c = Math.sin(clamp((b - 0.15) / 0.7, 0, 1) * Math.PI); rz += c * 0.2; rx += c * 0.07; z += Math.sin(clamp((b - 0.3) / 0.4, 0, 1) * Math.PI) * 0.04; y -= c * 0.015; }
+    if (this.pumpT > 0) { const c = Math.sin(clamp(1 - this.pumpT / 0.45, 0, 1) * Math.PI); lhZ += c * 0.07; rx += c * 0.05; }
+    if (v.magProxy) v.magProxy.visible = magOn;
     const u = this.use;
     if (u) {
       const t = Math.sin(clamp(u.t / u.dur, 0, 1) * Math.PI);
@@ -240,7 +278,7 @@ export class Player {
     if (this.mantle) { y -= 0.3; rx -= 0.6; }
     const s = this.sprintF * (w.melee ? 0.4 : 1); y -= s * 0.05; ry += s * 0.5; rx -= s * 0.18; x -= s * 0.04;
     v.position.set(x, y, z); v.rotation.set(rx, ry, rz);
-    if (v.lh) v.lh.position.set(0, lhY, lhZ);
+    if (v.lh) v.lh.position.set(lhX, lhY, lhZ);
     v.visible = !this.scoped;
     v.updateMatrixWorld();
     const q = G.camera.quaternion, cp = G.camera.position;
