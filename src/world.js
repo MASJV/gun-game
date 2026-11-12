@@ -454,7 +454,7 @@ function bush(B, x, z) {
 }
 function light(W, scene, hex, intensity, dist, x, y, z, dyn) {
   const l = new THREE.PointLight(hex, intensity, dist, 1.6);
-  l.position.set(x, y, z); scene.add(l);
+  l.position.set(x, y, z); scene.add(l); l.userData.base = intensity; W.lights.push(l);
   if (dyn) W.dyn.push({ l, base: intensity, kind: dyn });
   return l;
 }
@@ -502,7 +502,7 @@ function forest(B, W, scene) {
   for (const s of [-1, 1]) { B.box('wood', 0x4a3e2e, 14 + s * 1.65, 5.2, -1, 0.08, 0.9, 3.4, { col: false }); B.box('wood', 0x4a3e2e, 14, 5.2, -1 + s * 1.65, 3.4, 0.9, 0.08, { col: false }); }
   B.box('emis', 0xfff0c8, 12.5, 5.9, 0.6, 0.3, 0.3, 0.3, { col: false, tint: 0 });
   const sl = new THREE.SpotLight(0xffe9c0, 500, 60, 0.42, 0.6, 1.5);
-  sl.position.set(12.5, 6, 0.6); sl.target.position.set(1, 0, 11); scene.add(sl, sl.target);
+  sl.position.set(12.5, 6, 0.6); sl.target.position.set(1, 0, 11); scene.add(sl, sl.target); sl.userData.base = 500; W.lights.push(sl);
   // vehicles, cover, clutter
   truck(B, -9, -6, 0); truck(B, 5, -10.5, Math.PI / 2);
   crate(B, -2, -20.5, 1.2); crate(B, -0.8, -21.6, 1); crate(B, -2, -20.5, 0.8, 1.2); crate(B, 10, -12, 1.2); crate(B, 11.3, -12.3, 1);
@@ -532,7 +532,11 @@ function forest(B, W, scene) {
   B.box('dirt', 0x4a4033, 44, 0, -46, 9, 0.02, 9, { col: false, tint: 0 });
   crate(B, 48, -50, 1.1); crate(B, 40, -50.5, 0.9);
   // scatter: trees, rocks, logs, bushes
-  const clear = [[-6.6, 54, 5], [-38, 8, 7.5], [35, 14, 7.5], [44, -46, 7]];
+  const clear = [[-6.6, 54, 5], [-38, 8, 7.5], [35, 14, 7.5], [44, -46, 7], [54, 22, 4.5], [-54, -10, 4.5], [-46, 46, 6], [48, 44, 6], [-38.5, -40.5, 7.5]];
+  // remote bunker in the north-west woods (objective anchor)
+  room(B, 'concrete', 0x4f5350, -41.5, -43.5, -35.5, -39.5, 2.6, { s: [{ a: -39.5, b: -37.5 }], e: [{ a: -42.5, b: -41, sill: 1, top: 1.9 }] }); B.box('concrete', 0x464a47, -38.5, 2.6, -41.5, 6.6, 0.25, 4.6);
+  sandbags(B, -35, -37.2, 3, true); crate(B, -43.3, -38.5, 1.1); B.box('dirt', 0x463c2f, -38.5, 0, -39, 9, 0.015, 9, { col: false, tint: 0 });
+  B.box('dirt', 0x4a4033, -46, 0, 46, 8, 0.02, 8, { col: false, tint: 0 }); B.box('dirt', 0x4a4033, 48, 0, 44, 8, 0.02, 8, { col: false, tint: 0 });
   const ok = (x, z, m = 0) => {
     if (x > -21 - m && x < 21 + m && z > -30 - m && z < 6 + m) return false;
     for (const [cx, cz, cr] of clear) if (Math.hypot(x - cx, z - cz) < cr + m) return false;
@@ -583,6 +587,19 @@ function forest(B, W, scene) {
     ],
     posts: { objective: [[-9.5, -14.5], [-16.5, -21], [-10, -20.5], [-3.5, -19]], entrance: [[-4.5, 1.5, 'south gate'], [16, -12, 'east breach'], [-12, -25.6, 'north-west gap'], [-16.5, -6.5, 'west gap'], [12, 2, 'watchtower']] },
     panel: { x: 7.5, z: -16.4, face: [0, -1], n: 'barracks alarm' }, guards: 10,
+    // mission anchors: curated objective zones (at = object position [x, y, z], posts = guard positions)
+    anchors: [
+      { id: 'hut', name: 'command hut', at: [-7.3, 0.8, -23.3], stand: [-7.3, -22], indoor: 1, posts: [[-9.5, -14.5], [-16.5, -21], [-10, -20.5], [-3.5, -19]] },
+      { id: 'barracks', name: 'barracks', at: [12.8, 0, -21.6], stand: [12, -20.6], indoor: 1, posts: [[10, -15.5], [17, -21], [8, -20.5]] },
+      { id: 'tower', name: 'watchtower', at: [11.6, 0, 2.2], stand: [10.8, 1.6], indoor: 1, posts: [[9.5, -2], [16.5, 2.4], [12, 6]] },
+      { id: 'ruin', name: 'western ruin', at: [-40.3, 0, 8], stand: [-39.5, 7], indoor: 1, posts: [[-38, 2.5], [-36, 11], [-33, 6]] },
+      { id: 'camp', name: 'eastern camp', at: [36.3, 0, 13.6], stand: [35.6, 14.3], indoor: 1, posts: [[33, 9], [39.5, 11.5], [30.5, 15]] },
+      { id: 'motorpool', name: 'vehicle park', at: [-6.1, 0, -4], stand: [-5.5, -3.2], posts: [[-3, -3], [-12, -1.5], [-6, -10.5]] },
+      { id: 'generator', name: 'generator yard', at: [3.4, 0, -17.5], stand: [3.4, -18.5], indoor: 1, posts: [[0, -14], [6.5, -14.5], [-1, -18.5]] },
+      { id: 'bunker', name: 'remote bunker', at: [-39.8, 0, -42.2], stand: [-39, -41.5], indoor: 1, posts: [[-38.5, -37.5], [-34, -41.5], [-37, -41.5]] },
+    ],
+    entries: [{ id: 'south', name: 'south road', x: -6.6, z: 54, yaw: 0 }, { id: 'east', name: 'eastern woods', x: 54, z: 22, yaw: Math.PI / 2 }, { id: 'west', name: 'western woods', x: -54, z: -10, yaw: -Math.PI / 2 }],
+    exits: [{ id: 'ne', name: 'north-east clearing', pos: [44, 0, -46] }, { id: 'sw', name: 'south-west clearing', pos: [-46, 0, 46] }, { id: 'se', name: 'south-east clearing', pos: [48, 0, 44] }],
     reinforce: [{ x: -30, z: -55, n: 'north treeline' }, { x: -54, z: -18, n: 'western treeline' }, { x: -44, z: 46, n: 'south-west treeline' }],
     pickups: [['med', 12.6, -23.6], ['med', 36.6, 16.4], ['ammo', -40, 6.5], ['ammo', -1, -19]],
   };
@@ -692,13 +709,24 @@ function warehouse(B, W, scene) {
     ],
     posts: { objective: [[-28, -19], [-27.5, -11.3], [-19.2, -19], [-24, -21]], entrance: [[18, -10, 'north loading door'], [18, 10, 'south loading door'], [-33, 0, 'west door'], [5, -23.5, 'north door'], [-7, 23.5, 'south door']] },
     panel: { x: -19.5, z: -15, face: [-1, 0], n: 'office alarm' }, guards: 10,
+    anchors: [
+      { id: 'office', name: 'administration office', at: [-34.3, 0.8, -22], stand: [-33, -22], indoor: 1, posts: [[-28, -19], [-27.5, -11.3], [-19.2, -19], [-24, -21]] },
+      { id: 'machine', name: 'machine room', at: [-27, 0, 15.2], stand: [-27.8, 16], indoor: 1, posts: [[-28, 13.5], [-27, 21], [-22.5, 16.5]] },
+      { id: 'dock', name: 'loading dock', at: [15.6, 1, 23.9], stand: [15.6, 22.9], indoor: 1, posts: [[12, 22.5], [18.4, 21.6], [9.5, 17.5]] },
+      { id: 'containers', name: 'container storage', at: [11.3, 0, -16.2], stand: [11.3, -15.3], indoor: 1, posts: [[11, -22.2], [16.8, -13.5], [1, -15]] },
+      { id: 'westbay', name: 'west bay', at: [-33.7, 0, -5], stand: [-32.8, -4.4], indoor: 1, posts: [[-28, -8], [-25, 2], [-31, 8.6]] },
+      { id: 'yard', name: 'loading yard', at: [31.8, 0, 19], stand: [32.6, 18.2], posts: [[33, 12.5], [25.5, 14], [38, 19]] },
+      { id: 'alley', name: 'north service alley', at: [-22, 0, -30.3], stand: [-22, -29.3], posts: [[-28, -28.8], [-14, -28.8], [-22, -27.5]] },
+    ],
+    entries: [{ id: 'yard', name: 'south-east yard', x: 44.5, z: 27, yaw: Math.PI / 2 }, { id: 'nw', name: 'north-west corner', x: -45, z: -29, yaw: -Math.PI / 2 }, { id: 'south', name: 'south alley', x: -24, z: 29.4, yaw: -Math.PI / 2 }],
+    exits: [{ id: 'west', name: 'west back lot', pos: [-43, 0, 4] }, { id: 'east', name: 'east gate', pos: [44.5, 0, -2] }, { id: 'north', name: 'north alley', pos: [17.5, 0, -29.2] }],
     reinforce: [{ x: 45, z: -1, n: 'east gate' }, { x: 45, z: -28, n: 'north-east service gate' }],
     pickups: [['med', -33.8, 12.2], ['med', -22, -24], ['ammo', -17.6, -2.6], ['ammo', 23, 16]],
   };
 }
 
 export function buildWorld(id, scene) {
-  const B = new Builder(), W = { id, dyn: [] };
+  const B = new Builder(), W = { id, dyn: [], lights: [] };
   Object.assign(W, id === 'forest' ? forest(B, W, scene) : warehouse(B, W, scene));
   W.meshes = B.finish(scene);
   W.colliders = B.col; W.nav = new Nav(B.col, W.bounds); W.cover = buildCover(B.col, W.nav);

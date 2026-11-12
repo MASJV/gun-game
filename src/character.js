@@ -17,6 +17,9 @@ export const PALETTES = {
   aggressor: { jacket: 0x504537, pants: 0x41382e, gear: 0x2a251f, helmet: 0x342e26 },
   cautious: { jacket: 0x38424a, pants: 0x2f373d, gear: 0x20262b, helmet: 0x282f35 },
   elite: { jacket: 0x23262a, pants: 0x1e2124, gear: 0x121416, helmet: 0x17191c },
+  // non-combatants: no helmet or armour, bare head and hands
+  hostage: { jacket: 0xa8602c, pants: 0xa8602c, civ: 'hostage', skin: 0x8f6b55 },
+  hvt: { jacket: 0x9a9388, pants: 0x2c2e33, civ: 'hvt', skin: 0x8f6b55 },
 };
 
 let T = null; // template data, built once
@@ -59,7 +62,7 @@ function bodyGeo(pal) {
   const P = PALETTES[pal], src = T.body.geometry, g = new THREE.BufferGeometry(), n = src.attributes.position.count, col = new Float32Array(n * 3);
   for (const k in src.attributes) g.setAttribute(k, src.attributes[k]);
   g.setIndex(src.index); g.boundingSphere = src.boundingSphere; g.boundingBox = src.boundingBox;
-  const c = [P.jacket, P.pants, 0x17191b, 0x0e0f10, 0x0c0c0d].map((h) => new THREE.Color(h));
+  const c = [P.jacket, P.pants, P.skin || 0x17191b, P.skin || 0x0e0f10, 0x0c0c0d].map((h) => new THREE.Color(h));
   for (let i = 0; i < n; i++) { const k = c[T.region[i]]; col[i * 3] = k.r; col[i * 3 + 1] = k.g; col[i * 3 + 2] = k.b; }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return (T.geos[pal] = g);
@@ -97,9 +100,11 @@ export class Character {
     inner.updateMatrixWorld(true);
     this.dress(palette);
     // weapon in the right hand
-    const gun = (this.gun = makeGun(gunId)); gun.traverse((o) => { o.castShadow = false; }); gun.quaternion.copy(T.gunQuat); gun.position.copy(T.gunPos); this.bones.hand_r.add(gun);
-    this.flash = new THREE.Mesh(T.geo.flash, T.mats.flash); this.flash.position.copy(gun.muzzle).z -= 0.08; this.flash.scale.set(1, 1, 2.2); this.flash.visible = false; gun.add(this.flash);
-    this.gripL = gun.pt(gun.def.hand); this.gripL.y -= 0.035; this.gripL.z += 0.03;
+    if (gunId) {
+      const gun = (this.gun = makeGun(gunId)); gun.traverse((o) => { o.castShadow = false; }); gun.quaternion.copy(T.gunQuat); gun.position.copy(T.gunPos); this.bones.hand_r.add(gun);
+      this.flash = new THREE.Mesh(T.geo.flash, T.mats.flash); this.flash.position.copy(gun.muzzle).z -= 0.08; this.flash.scale.set(1, 1, 2.2); this.flash.visible = false; gun.add(this.flash);
+      this.gripL = gun.pt(gun.def.hand); this.gripL.y -= 0.035; this.gripL.z += 0.03;
+    } else { this.gun = null; this.flash = { visible: false }; }
     // animation
     const mx = (this.mixer = new THREE.AnimationMixer(inner));
     this.act = {};
@@ -121,6 +126,9 @@ export class Character {
         g.setAttribute('color', new THREE.BufferAttribute(col, 3)); (groups[bone] || (groups[bone] = [])).push(g);
       };
       const B = T.geo.box, G = P.gear, H = P.helmet, D = 0x0d0e0f, h = R.Head, c = R.spine_03, p = R.pelvis;
+      if (P.civ === 'hostage') { add('Head', B, 0xd8d8d0, h.x, h.y + 0.07, h.z + 0.02, 0.2, 0.045, 0.2); add('spine_03', B, 0xd0d0c8, c.x, c.y + 0.02, c.z + 0.1, 0.2, 0.12, 0.02); } // blindfold + number patch
+      else if (P.civ === 'hvt') { add('Head', T.geo.helmet, 0x6e1818, h.x + 0.02, h.y + 0.13, h.z, 0.95, 0.42, 1.0); for (const s of [-1, 1]) add('spine_03', B, 0xb89a3a, c.x + s * 0.17, c.y + 0.16, c.z, 0.09, 0.025, 0.12); add('spine_03', B, 0x6e1818, c.x, c.y - 0.03, c.z + 0.1, 0.05, 0.3, 0.02); } // red beret, epaulettes, tie
+      else {
       add('Head', T.geo.helmet, H, h.x, h.y + 0.105, h.z + 0.005, 1, 1.02, 1.12); add('Head', B, H, h.x, h.y + 0.085, h.z + 0.118, 0.2, 0.025, 0.07);
       add('Head', B, 0x0a0d10, h.x, h.y + 0.062, h.z + 0.108, 0.17, 0.05, 0.03); add('Head', B, D, h.x, h.y + 0.165, h.z + 0.11, 0.05, 0.05, 0.05);
       for (const s of [-1, 1]) add('Head', B, D, h.x + s * 0.118, h.y + 0.06, h.z, 0.035, 0.08, 0.07);
@@ -131,6 +139,7 @@ export class Character {
       add('pelvis', B, D, p.x, p.y + 0.06, p.z, 0.37, 0.06, 0.25);
       add('thigh_r', B, D, R.thigh_r.x + 0.085 * Math.sign(R.thigh_r.x), R.thigh_r.y - 0.14, R.thigh_r.z, 0.05, 0.17, 0.1);
       for (const s of ['l', 'r']) add('calf_' + s, B, D, R['calf_' + s].x, R['calf_' + s].y - 0.02, R['calf_' + s].z + 0.055, 0.105, 0.13, 0.05);
+      }
       T.gear[pal] = Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, mergeGeometries(v)]));
     }
     for (const bone in T.gear[pal]) { const m = new THREE.Mesh(T.gear[pal][bone], T.mats.gear); m.frustumCulled = false; this.bones[bone].add(m); }
@@ -178,8 +187,8 @@ export class Character {
       for (const n of ['aimN', 'aimU', 'aimD']) tgt[n] *= 1 - uw;
     }
     const base = 1 - fw;
-    for (const n in LOCO) { w[n] += (tgt[n] - w[n]) * k; this.act[n].setEffectiveWeight(w[n] * base); this.act[n + 'U'].setEffectiveWeight(0); }
-    for (const n in UPPER) { w[n] += (tgt[n] - w[n]) * k; this.act[n].setEffectiveWeight(w[n] * base); }
+    for (const n in LOCO) { w[n] += (tgt[n] - w[n]) * k; this.act[n].setEffectiveWeight(w[n] * base); this.act[n + 'U'].setEffectiveWeight(this.gun ? 0 : w[n] * base * (1 - uw)); }
+    for (const n in UPPER) { w[n] += (tgt[n] - w[n]) * k; this.act[n].setEffectiveWeight(this.gun ? w[n] * base : 0); }
     this.mixer.update(dt);
     if (this.dead) return;
     // procedural layer
@@ -198,7 +207,7 @@ export class Character {
     }
     // left hand onto the handguard whenever the weapon is up (or held at low ready)
     const wantIK = this.uOne || this.fOne ? 0 : 1; this.ikW += (wantIK - this.ikW) * Math.min(1, dt * 8);
-    if (this.ikW > 0.5) {
+    if (this.ikW > 0.5 && this.gun) {
       this.gun.updateWorldMatrix(true, false);
       const t = v3.copy(this.gripL).applyMatrix4(this.gun.matrixWorld); const tx = t.x, ty = t.y, tz = t.z;
       this.root.getWorldQuaternion(q1); const pole = new THREE.Vector3(-0.55, -0.8, 0.2).applyQuaternion(q1);

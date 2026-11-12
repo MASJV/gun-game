@@ -58,6 +58,8 @@ h1 span{color:var(--g)}
 .hp{position:absolute;background:var(--p);border-left:2px solid var(--g);padding:8px 12px}
 #obj{top:18px;left:18px;max-width:320px;font-size:13px}
 #obj i{display:block;font-style:normal;font-size:10px;letter-spacing:.3em;color:var(--g);margin-bottom:3px}
+#objt div{margin-top:2px}.o-done{color:#6f8a76;text-decoration:line-through}.o-now{color:#fff}.o-todo{color:#8b989c}.o-locked{color:#5f6c70}
+#brl div{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.07);color:#dfe7ea}#brl i{font-style:normal;font-size:10px;letter-spacing:.3em;color:var(--a);margin-right:10px}
 #sec{top:18px;left:50%;transform:translateX(-50%);border-left:0;border-top:2px solid var(--g);font-size:11px;letter-spacing:.34em;padding:6px 18px;text-align:center;color:var(--g)}
 #sec.l1{color:var(--a);border-color:var(--a)}#sec.l2{color:var(--r);border-color:var(--r)}#sec.l3{color:#fff;border-color:var(--r);background:rgba(160,20,10,.75);animation:bl 1s steps(2) infinite}
 @keyframes bl{50%{background:rgba(90,10,6,.75)}}
@@ -155,6 +157,8 @@ h1 span{color:var(--g)}
       <div class="grp"><label>MAP</label><div class="opts" data-k="map">
         <button class="opt sel" data-v="forest">Forest Outpost<small>night · fog · open approaches</small></button>
         <button class="opt" data-v="warehouse">Industrial Warehouse<small>interior · close quarters</small></button></div></div>
+      <div class="grp"><label>MISSION TYPE</label><div class="opts" data-k="mission"></div></div>
+      <div class="grp"><label>OPERATION LENGTH</label><div class="opts" data-k="length"></div></div>
       <div class="grp"><label>ENEMY INTELLIGENCE</label><div class="opts" data-k="ai">
         <button class="opt" data-v="recruit">Recruit<small>slow to react, sloppy cover, poor radio discipline</small></button>
         <button class="opt sel" data-v="tactical">Tactical<small>lean-peeks, flanks, defends the objective</small></button>
@@ -201,6 +205,10 @@ h1 span{color:var(--g)}
     </div>
   </div>
 </div>
+
+<div class="ov" id="briefov"><div class="box" style="width:min(520px,92%)"><h2 id="brt" style="font-size:26px"></h2><div class="sub" id="brs" style="margin-bottom:0"></div>
+  <div class="panel"><h3>OBJECTIVE SEQUENCE</h3><div id="brl"></div></div>
+  <button class="btn" id="brgo">BEGIN MISSION</button><button class="btn alt" id="brback">RETURN TO MENU</button></div></div>
 
 <div class="ov" id="pause"><div class="box"><h2>PAUSED</h2><div class="sub" id="phint">MISSION ON HOLD</div>
   <button class="btn" id="resume">RESUME</button><button class="btn alt" id="prestart">RESTART MISSION</button><button class="btn alt" id="pmenu">RETURN TO MENU</button></div></div>

@@ -28,7 +28,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       const G = window.__SP;
       if (G.state === 'playing') press('Escape');
       if (G.state === 'paused') document.getElementById('pmenu').click(); else if (G.state !== 'menu') document.getElementById('emenu').click();
-      G.sel.map = map; G.sel.ai = ai; const L = G.loadout; L.primary = load.primary || 'm4'; L.secondary = load.secondary || 'pistol'; L.kit = load.kit || 'assault';
+      G.sel.map = map; G.sel.ai = ai; G.sel.layout = load.mission ? null : 'classic'; G.sel.mission = load.mission || 'intel'; G.sel.length = load.length || 'quick'; G.sel.seed = load.seed ?? null; const L = G.loadout; L.primary = load.primary || 'm4'; L.secondary = load.secondary || 'pistol'; L.kit = load.kit || 'assault';
       for (const id in L.att) Object.assign(L.att[id], { optic: id === 'dmr' ? 'scope' : 'iron', muzzle: false, grip: false, laser: false }, (load.att || {})[id] || {});
       document.getElementById('start').click();
     }, [map, ai, load]);
@@ -308,28 +308,91 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
   });
 
   await run('mission', async () => {
-    for (const map of ['forest', 'warehouse']) {
-      await start(map, 'recruit');
-      const o = await p.evaluate(() => {
-        const G = window.__SP, P = G.player, W = G.world, o = {}; G.enemies.forEach((e) => { e.dead = true; }); const n0 = G.enemies.length;
-        const ob = W.objective.pos; P.pos.set(ob[0] + (W.id === 'forest' ? 0 : 1.3), 0, ob[2] + (W.id === 'forest' ? 1.3 : 0)); sim(0.1);
-        o.prompt = document.getElementById('prompt').textContent;
-        if (W.objective.hold) { key('KeyE', true); sim(3.2); key('KeyE', false); } else { G.inp.e = true; sim(0.1); }
-        o.stage = G.stage; o.sec = G.sec.level; sim(20); o.rein = G.enemies.length - n0;
-        const ex = W.extraction.pos; P.pos.set(ex[0], 0, ex[2]); sim(0.2); o.state = G.state; o.end = document.getElementById('endt').textContent;
-        return o;
-      });
-      check(`mission/${map}: objective -> lockdown -> extraction completes`, o.stage === 1 && o.sec === 3 && o.rein === 2 && o.state === 'won', o);
+    // helper living in the page: play a generated mission to the end by walking the objective list
+    await p.evaluate(() => {
+      const G = window.__SP;
+      window.playMission = (opts = {}) => {
+        const P = G.player, Mi = G.mission, W = G.world, log = { stages: Mi.def.stages.map((s) => s.kind), zones: Mi.def.stages.map((s) => s.anchors[0].id), entry: Mi.def.entry.id, exit: Mi.def.exit.id, valid: G.missionCheck(), fb: !!Mi.def.fallbackUsed, lines0: Mi.lines().map((l) => l.state).join(',') };
+        G.enemies.forEach((e) => { e.dead = true; e.found = true; });
+        let guard = 0;
+        while (!Mi.complete && G.state === 'playing' && guard++ < 12) {
+          const s = Mi.stage;
+          if (s.civ) { const c = s.civRef; if (c.state === 'flee') sim(25, () => c.state === 'flee'); P.pos.set(c.pos.x + 1.4, c.pos.y, c.pos.z); P.yaw = Math.PI / 2; sim(0.6); key('KeyE', true); sim(2); key('KeyE', false); log.civ = c.state; }
+          else for (const it of Mi.items.filter((x) => x.stage === Mi.i)) { if (Mi.stage !== s) break; const a = s.anchors[it.k].stand; P.pos.set(a[0], W.nav.height(a[0], a[1]), a[1]); sim(0.1); log.prompt = document.getElementById('prompt').textContent; if (s.hold) { key('KeyE', true); sim(s.hold + 0.4); key('KeyE', false); } else { G.inp.e = true; sim(0.1); } }
+        }
+        log.done = Mi.complete; log.sec = G.sec.level; log.comms = G.sec.commsDown; log.panel = G.sec.panelDown; log.power = !!W.powerOff;
+        if (Mi.civ && !opts.noEscort) { // the escort must actually follow over a real route
+          const c = Mi.civ, a = Mi.def.stages[0].anchors[0].posts[0]; P.pos.set(a[0], W.nav.height(a[0], a[1]), a[1]); sim(30, () => Math.hypot(c.pos.x - P.pos.x, c.pos.z - P.pos.z) > 3); log.followed = +Math.hypot(c.pos.x - P.pos.x, c.pos.z - P.pos.z).toFixed(1);
+          const ex = Mi.def.exit.pos; P.pos.set(ex[0], 0, ex[2]); sim(0.3); log.blockedWithoutCiv = G.state === 'playing'; c.pos.set(ex[0] + 1.5, 0, ex[2]); c.path = null; sim(0.3);
+        } else { const ex = Mi.def.exit.pos; P.pos.set(ex[0], 0, ex[2]); sim(0.3); }
+        log.state = G.state; log.end = document.getElementById('endt').textContent;
+        return log;
+      };
+    });
+    // every mission type x supported length x both maps, several seeds: valid, right number of objectives, completes
+    const combos = { intel: ['quick', 'standard', 'extended'], capture: ['quick', 'standard', 'extended'], sabotage: ['quick', 'standard', 'extended'], rescue: ['quick', 'standard', 'extended'], multi: ['standard', 'extended'] };
+    const n = { quick: 1, standard: 2, extended: 3 }; let bad = [], count = 0, fb = 0; const kinds = new Set();
+    for (const map of ['forest', 'warehouse']) for (const type in combos) for (const length of combos[type]) for (const seed of [11, 202]) {
+      await start(map, 'recruit', { mission: type, length, seed });
+      const r = await p.evaluate(() => playMission());
+      count++; r.stages.forEach((k) => kinds.add(k)); if (r.fb) fb++;
+      const ok = r.valid === null && r.stages.length === n[length] && new Set(r.zones).size === r.zones.length && r.done && r.state === 'won' && (!('followed' in r) || (r.followed < 4 && r.blockedWithoutCiv));
+      if (!ok) bad.push({ map, type, length, seed, r });
     }
+    check(`missions: ${count} generated missions (all types, lengths, both maps) are valid and completable`, bad.length === 0, bad.slice(0, 2));
+    check('missions: no fallback layouts needed; every stage kind appears', fb === 0 && ['retrieve', 'hack', 'keycard', 'search', 'sab:comms', 'sab:security', 'sab:power', 'sab:charge', 'capture', 'rescue'].every((k) => kinds.has(k)), [fb, [...kinds]]);
+    // only valid type/length combinations are offered
+    const menu = await p.evaluate(() => { const G = window.__SP; document.getElementById('emenu').click(); document.querySelector('[data-tab="play"]').click(); document.querySelector('.opts[data-k="mission"] [data-v="multi"]').click(); const a = [...document.querySelectorAll('.opts[data-k="length"] .opt')].map((o) => o.dataset.v); document.querySelector('.opts[data-k="mission"] [data-v="capture"]').click(); return [a, [...document.querySelectorAll('.opts[data-k="length"] .opt')].map((o) => o.dataset.v), document.querySelectorAll('.opts[data-k="mission"] .opt').length]; });
+    check('missions: menu offers 5 mission types and only valid lengths', menu[2] === 5 && menu[0].join() === 'standard,extended' && menu[1].join() === 'quick,standard,extended', menu);
+    // anti-repetition: same map + mission type replayed with fresh random seeds
+    for (const map of ['forest', 'warehouse']) {
+      const zones = [], entries = [];
+      await p.evaluate(() => { localStorage.removeItem('sp21_history'); window.__SP.hist = {}; });
+      for (let i = 0; i < 7; i++) { await start(map, 'recruit', { mission: 'intel', length: 'quick' }); const r = await p.evaluate(() => { const d = window.__SP.mission.def; return [d.primary.id, d.entry.id, d.exit.id]; }); zones.push(r[0]); entries.push(r[1]); }
+      const immediate = zones.some((z, i) => i && z === zones[i - 1]), firstRepeat = zones.findIndex((z, i) => zones.indexOf(z) < i), entryRepeat = entries.some((e, i) => i && e === entries[i - 1]);
+      check(`missions/${map}: objective zone never repeats back-to-back and rotates through zones`, !immediate && (firstRepeat === -1 || firstRepeat >= 4) && new Set(zones).size >= 4 && !entryRepeat, [zones, entries]);
+    }
+    // deterministic seeds reproduce the same layout
+    const same = [];
+    for (let i = 0; i < 2; i++) { await p.evaluate(() => { window.__SP.hist = {}; }); await start('warehouse', 'recruit', { mission: 'multi', length: 'extended', seed: 777 }); same.push(await p.evaluate(() => { const d = window.__SP.mission.def; return d.stages.map((s) => s.kind + '@' + s.anchors.map((a) => a.id).join('+')).join('>') + '|' + d.entry.id + '|' + d.exit.id; })); }
+    check('missions: a seed reproduces the same mission', same[0] === same[1], same[0]);
+    // HVT: relocates when the site is alerted, surrenders up close, killing him fails the mission
+    await start('warehouse', 'recruit', { mission: 'capture', length: 'quick', seed: 5 });
+    const hv = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, c = G.mission.civ, o = {}; G.enemies.forEach((e) => { e.dead = true; e.found = true; }); P.pos.set(44, 0, 28);
+      o.kind = c.kind; o.start = c.state; const p0 = [c.pos.x, c.pos.z]; G.sec.level = 2; sim(30, () => c.state !== 'cower'); o.afterAlert = c.state; o.movedDist = +Math.hypot(c.pos.x - p0[0], c.pos.z - p0[1]).toFixed(0);
+      o.markerStillAtOld = Math.hypot(G.mission.focus()[0] - c.pos.x, G.mission.focus()[2] - c.pos.z) > 10; // no live tracking of the target
+      P.pos.set(c.pos.x + 1.5, c.pos.y, c.pos.z); sim(0.5); o.near = c.state; c.damage(500); sim(0.2); o.state = G.state; o.sub = document.getElementById('ends').textContent;
+      return o;
+    });
+    check('capture: the target relocates on alert, surrenders up close, and must be taken alive', hv.kind === 'hvt' && hv.start === 'idle' && hv.afterAlert === 'cower' && hv.movedDist > 10 && hv.markerStillAtOld && hv.near === 'surrender' && hv.state === 'dead' && /TARGET WAS KILLED/.test(hv.sub), hv);
+    await start('forest', 'recruit', { mission: 'rescue', length: 'quick', seed: 9 });
+    const hs = await p.evaluate(() => { const G = window.__SP, c = G.mission.civ, o = { kind: c.kind, start: c.state }; const guards = G.enemies.filter((e) => e.duty === 'objective' && Math.hypot(e.pos.x - c.pos.x, e.pos.z - c.pos.z) < 16).length; o.guards = guards; c.damage(500); sim(0.2); o.state = G.state; o.sub = document.getElementById('ends').textContent; return o; });
+    check('rescue: the hostage is guarded from the start and must survive', hs.kind === 'hostage' && hs.start === 'held' && hs.guards >= 2 && hs.state === 'dead' && /HOSTAGE WAS KILLED/.test(hs.sub), hs);
+    // sabotage changes how security works
+    await start('warehouse', 'tactical', { mission: 'sabotage', length: 'extended', seed: 3 });
+    const sb = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, Mi = G.mission, W = G.world, o = { plan: Mi.def.plan }; calm(); const l0 = W.lights[0].intensity, v0 = W.env.viewRange;
+      const doStage = () => { const s = Mi.stage, a = s.anchors[0].stand; P.pos.set(a[0], W.nav.height(a[0], a[1]), a[1]); sim(0.1); key('KeyE', true); sim(s.hold + 0.4); key('KeyE', false); return s.kind; };
+      P.hp = 1e6; const done = []; while (!Mi.complete) done.push(doStage()); o.done = done;
+      const e = G.enemies.find((x) => !x.dead); e.lkp.set(0, 0, 0); G.sec.level = 0; G.sec.radio(e, 'contact', 0, 0); o.levelAfterRadio = G.sec.level; o.comms = G.sec.commsDown;
+      o.lights = [l0, W.lights[0].intensity]; o.view = [v0, W.env.viewRange]; o.panel = G.sec.panelDown;
+      P.pos.set(44, 0, 28); sim(14); o.secAfterCharge = G.sec.level; o.lines = Mi.lines().map((l) => l.state).join(',');
+      return o;
+    });
+    const hasC = sb.plan.includes('sab:comms'), hasP = sb.plan.includes('sab:power');
+    check('sabotage: comms down blocks radio reports; power down darkens the site; charge detonates and alerts', sb.done.length === 3 && (!hasC || (sb.comms && sb.levelAfterRadio === 0)) && (!hasP || (sb.lights[1] < sb.lights[0] * 0.3 && sb.view[1] < sb.view[0])) && sb.secAfterCharge >= 2 && sb.lines === 'done,done,done,now', sb);
+    // classic flow: death, restart, pause
     await start('warehouse', 'tactical');
     const d = await p.evaluate(() => {
       const G = window.__SP, P = G.player, o = {}; const e = G.enemies[0];
+      o.hud = document.getElementById('objt').textContent.length > 10;
       P.damage(120, e.pos, { name: e.type.name, dist: 12, x: e.pos.x, z: e.pos.z }); sim(0.1); o.state = G.state; o.sub = document.getElementById('ends').textContent;
       document.getElementById('again').click(); o.restart = [G.state, G.player.hp, G.enemies.length];
       press('Escape'); o.paused = G.state; document.getElementById('resume').click(); o.resumed = G.state;
       return o;
     });
-    check('mission: death screen explains the cause; restart, pause and resume work', d.state === 'dead' && /KILLED BY/.test(d.sub) && d.restart[0] === 'playing' && d.restart[1] === 100 && d.paused === 'paused' && d.resumed === 'playing', d);
+    check('mission: death screen explains the cause; restart, pause and resume work', d.hud && d.state === 'dead' && /KILLED BY/.test(d.sub) && d.restart[0] === 'playing' && d.restart[1] === 100 && d.paused === 'paused' && d.resumed === 'playing', d);
   });
 
   await run('stability', async () => {

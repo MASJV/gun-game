@@ -49,9 +49,10 @@ export class Grenades {
         const ex = G.losB(p.x, by, p.z, x, y + h * 0.55, z) ? 1 : G.losB(p.x, by, p.z, x, y + h * 0.9, z) ? 0.45 : 0;
         return 150 * Math.pow(1 - d / 8, 1.3) * ex;
       };
+      for (const c of G.civs || []) { if (c.dead) continue; const d = blast(c.pos.x, c.pos.y, c.pos.z, 1.7); if (d > 1) c.damage(d); }
       for (const e of G.enemies) { if (e.dead) continue; const d = blast(e.pos.x, e.pos.y, e.pos.z, e.crouch ? 1.1 : 1.75); if (d > 1) { e.damage(d, p, 'blast'); if (!e.dead) e.supp = 1.5; } }
       const d = blast(P.pos.x, P.pos.y, P.pos.z, P.height);
-      if (d > 1) P.damage(d, p, { name: n.owner === 'player' ? 'your own grenade' : 'a fragmentation grenade', dist: dp, x: p.x, z: p.z, blast: true });
+      if (d > 1) P.damage(d, p, { name: n.owner === 'player' ? 'your own grenade' : n.owner === 'charge' ? 'your own demolition charge' : 'a fragmentation grenade', dist: dp, x: p.x, z: p.z, blast: true });
       if (dp < 25) P.shake = Math.max(P.shake, 1.2 * (1 - dp / 25));
     } else if (n.type === 'flash') {
       G.fx.boom.position.set(p.x, by, p.z); G.fx.boom.intensity = 2500; G.sound(p, 40, 'explosion');

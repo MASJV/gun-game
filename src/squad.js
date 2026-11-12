@@ -10,6 +10,7 @@ const rr = (a) => rnd(a[0], a[1]);
 export class Security {
   constructor(G, profile) {
     this.g = G; this.pr = profile; this.level = 0; this.t = 0; this.calm = 0; this.report = null; this.tick = 0;
+    this.commsDown = false; this.panelDown = false; // set by sabotage objectives
     this.sector = new Float32Array(8); this.runner = null; this.alarmAt = -1; this.nadeCool = 6; this.reinforced = false; this.reinAt = -1; this.assigned = -1;
   }
   raise(level, msg) {
@@ -29,15 +30,22 @@ export class Security {
   }
   // a guard gets a radio call out ("contact" / "man down")
   radio(e, kind, x, z) {
+    if (this.commsDown) { this.g.say(e, 'Radio is dead — no signal!'); this.g.shout(e); return; } // sabotaged relay: word of mouth only
     const first = this.raise(2, kind === 'body' ? 'MAN DOWN REPORTED' : 'INTRUDER REPORTED');
     this.setReport(x, z, e, kind);
     this.g.say(e, kind === 'body' ? 'Man down! Sweep the area!' : first ? 'Contact! Intruder on site!' : 'Contact, updating position!');
     if (first && this.g.world.panel) this.alarmAt = Math.random() < this.pr.alarmChance ? this.t + rr(this.pr.alarmDelay) : Infinity;
   }
   suspicious() { this.raise(1, ''); }
+  // a sabotaged / emptied objective is eventually noticed: the nearest free guard is sent to look at it
+  discover(anchor) {
+    const G = this.g, c = G.enemies.filter((e) => !e.dead && !e.engaged() && e.stun <= 0 && e.state !== 'ALARM').sort((a, b) => Math.hypot(a.pos.x - anchor.at[0], a.pos.z - anchor.at[2]) - Math.hypot(b.pos.x - anchor.at[0], b.pos.z - anchor.at[2]))[0];
+    if (!c) return;
+    this.raise(1, ''); c.alerted = true; c.setOrder({ type: 'investigate', x: anchor.stand[0], z: anchor.stand[1] }); G.say(c, `Checking the ${anchor.name}.`);
+  }
   lockdown(msg) {
     if (!this.raise(3, msg)) return;
-    if (!this.reinforced) { this.reinforced = true; this.reinAt = this.t + rnd(12, 18); }
+    if (!this.reinforced && !this.commsDown) { this.reinforced = true; this.reinAt = this.t + rnd(12, 18); } // no relay, nobody to call
     this.assign(true);
   }
   // may this (elite) squad member break cover to move right now? Someone else must be covering.
@@ -99,7 +107,7 @@ export class Security {
     }
     // someone runs for the alarm panel once an alert is confirmed
     if (this.runner && (this.runner.dead || this.runner.state !== 'ALARM')) { if (this.level < 3 && this.runner.dead) this.alarmAt = this.t + rr(this.pr.alarmDelay); this.runner = null; }
-    if (this.level === 2 && G.world.panel && !this.runner && this.alarmAt >= 0 && this.t >= this.alarmAt) {
+    if (this.level === 2 && G.world.panel && !this.panelDown && !this.runner && this.alarmAt >= 0 && this.t >= this.alarmAt) {
       const P = G.world.panel, c = alive.filter((e) => !e.engaged() && e.stun <= 0).sort((a, b) => Math.hypot(a.pos.x - P.x, a.pos.z - P.z) - Math.hypot(b.pos.x - P.x, b.pos.z - P.z))[0];
       if (c && c.goAlarm()) { this.runner = c; G.say(c, 'Going for the alarm!'); } else this.alarmAt = this.t + 3;
     }

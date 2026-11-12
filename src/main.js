@@ -11,6 +11,7 @@ import { Security, LEVELS } from './squad.js';
 import { Grenades } from './equipment.js';
 import { FX } from './fx.js';
 import { makeBallistics } from './ballistics.js';
+import { MISSIONS, LENGTHS, Mission, generateMission, deployment, briefing, loadHistory, recordMission, validate } from './missions.js';
 import { Audio } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -22,7 +23,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure
 const ENV = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 
 const G = {
-  state: 'load', sel: { map: 'forest', ai: 'tactical', quality: 'med' }, sens: 1, fov: 75, loadout: loadLoadout(),
+  state: 'load', sel: { map: 'forest', ai: 'tactical', quality: 'med', mission: 'intel', length: 'quick', seed: null }, hist: loadHistory(), civs: [], sens: 1, fov: 75, loadout: loadLoadout(),
   inp: { k: {}, mx: 0, my: 0, lmb: false, rmb: false, lmbPressed: false, jump: false, e: false },
   camera: new THREE.PerspectiveCamera(75, 1, 0.08, 600), wcam: new THREE.PerspectiveCamera(50, 1, 0.01, 5),
   audio: new Audio(), enemies: [], stats: {}, nv: false, frame: 0,
@@ -51,6 +52,7 @@ G.sound = (pos, radius, kind, src) => {
     const d = Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z);
     if (d < radius * e.pr.hear) e.hear(pos, kind, d);
   }
+  if (kind === 'shot' || kind === 'explosion') for (const c of G.civs) if (Math.hypot(c.pos.x - pos.x, c.pos.z - pos.z) < radius * 0.7) c.alarm();
 };
 G.shout = (src) => { // voice: only allies within earshot, with positional error
   for (const e of G.enemies) {
@@ -141,13 +143,29 @@ function disposeScene() {
 function interactable(kind, x, y, z) {
   const g = new THREE.Group();
   const add = (hex, w, h, d, px, py, pz, em) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), em ? new THREE.MeshBasicMaterial({ color: hex }) : new THREE.MeshLambertMaterial({ color: hex })); m.position.set(px, py, pz); g.add(m); return m; };
+  const k = y > 0.5 ? 0.42 : 1; // desk-top unit vs. free-standing console
   if (kind === 'intel') { add(0x1c1f22, 0.5, 0.14, 0.36, 0, 0.07, 0); add(0xffb648, 0.42, 0.02, 0.05, 0, 0.15, 0, true); add(0xffb648, 0.06, 0.06, 0.02, 0, 0.07, 0.19, true); }
-  else if (kind === 'terminal') { add(0x15171a, 0.08, 0.5, 0.8, 0, 0.3, 0); g.screen = add(0x30ff78, 0.02, 0.4, 0.68, 0.05, 0.31, 0, true); add(0x1c1f22, 0.3, 0.03, 0.6, 0.3, 0.02, 0); }
+  else if (kind === 'terminal') { if (k === 1) add(0x2a2d31, 0.7, 0.8, 0.5, 0, 0.4, 0); const b = k === 1 ? 0.8 : 0; add(0x15171a, 0.08, 0.5, 0.8, 0, b + 0.3, 0); g.screen = add(0x30ff78, 0.02, 0.4, 0.68, 0.05, b + 0.31, 0, true); add(0x1c1f22, 0.3, 0.03, 0.6, 0.3, b + 0.02, 0); }
+  else if (kind === 'keycard') { if (k === 1) add(0x2a2d31, 0.4, 0.9, 0.4, 0, 0.45, 0); const b = k === 1 ? 0.9 : 0; add(0xe8e8e0, 0.09, 0.012, 0.14, 0, b + 0.01, 0); add(0x40d8ff, 0.07, 0.014, 0.03, 0, b + 0.012, 0.03, true); }
+  else if (kind === 'case') { if (k === 1) add(0x3a3026, 0.7, 0.5, 0.5, 0, 0.25, 0); const b = k === 1 ? 0.5 : 0; add(0x2c2119, 0.46, 0.12, 0.32, 0, b + 0.06, 0); add(0xffb648, 0.05, 0.03, 0.02, 0, b + 0.07, 0.17, true); }
+  else if (kind === 'radio') { add(0x30363a, 0.7 * (k < 1 ? 0.8 : 1), 1.15 * k, 0.4, 0, 0.575 * k, 0); add(0x1a1c1e, 0.02, 1.1, 0.02, 0.25, 1.15 * k + 0.55, 0); g.screen = add(0x38ff7a, 0.3, 0.1 , 0.02, 0, 0.9 * k, 0.21, true); add(0xffb030, 0.05, 0.05, 0.02, -0.22, 0.6 * k, 0.21, true); }
+  else if (kind === 'secpanel') { add(0x4a5058, 0.75, 1.35 * k, 0.3, 0, 0.675 * k, 0); g.screen = add(0x40a0ff, 0.5, 0.32 * k + 0.05, 0.02, 0, 0.95 * k, 0.16, true); add(0xc02a20, 0.08, 0.08, 0.03, 0.26, 0.45 * k, 0.16, true); }
+  else if (kind === 'generator') { add(0x6a5a22, 1.1, 0.85 * k, 0.6, 0, 0.425 * k, 0); add(0x1c1d1f, 0.9, 0.2 * k, 0.5, 0, 0.95 * k, 0); g.screen = add(0x38ff7a, 0.1, 0.1, 0.02, 0.38, 0.6 * k, 0.31, true); }
+  else if (kind === 'charge') { add(0x7a6a1e, 0.9, 1.0 * k, 0.9, 0, 0.5 * k, 0); add(0x111214, 0.92, 0.12 * k, 0.92, 0, 0.5 * k, 0); g.screen = add(0x402020, 0.22, 0.12, 0.03, 0, 0.75 * k, 0.46, true); }
   else if (kind === 'med') { add(0xd8dcd8, 0.5, 0.3, 0.34, 0, 0.15, 0); add(0xd43a30, 0.2, 0.06, 0.02, 0, 0.17, 0.18, true); add(0xd43a30, 0.06, 0.2, 0.02, 0, 0.17, 0.18, true); }
   else { add(0x3d4a30, 0.6, 0.32, 0.36, 0, 0.16, 0); add(0xe8b04a, 0.6, 0.05, 0.37, 0, 0.2, 0, true); }
   g.position.set(x, y, z); G.scene.add(g);
   return g;
 }
+G.makeInteractable = interactable;
+G.missionCheck = () => validate(G.world, G.mission.def); // null when every waypoint is reachable in order (used by tests)
+G.toast = (m, t) => toast(m, t);
+G.setPower = (on) => { // generator sabotage: the site goes dark, guards see less far
+  const W = G.world, k = on ? 1 : 0.12; W.powerOff = !on;
+  for (const l of W.lights) { if (l.userData.base == null) l.userData.base = l.intensity; l.intensity = l.userData.base * k; }
+  for (const d of W.dyn) d.base = d.l.userData.base * k;
+  W.env.detect = W.env.detect0 * (on ? 1 : 0.6); W.env.viewRange = W.env.viewRange0 * (on ? 1 : 0.78);
+};
 let typeBag = [];
 function spawnEnemy(x, z, route, o) {
   if (!typeBag.length) typeBag = ['guard', 'guard', 'aggressor', 'cautious', 'guard', 'aggressor', 'cautious', 'guard'].sort(() => Math.random() - 0.5);
@@ -170,27 +188,28 @@ function startMission() {
   if (G.sel.quality === 'low') for (const m of W.meshes) if (m.userData.detail) m.visible = false; // ground clutter off
   G.nvLight = new THREE.AmbientLight(0xffffff, 0); scene.add(G.nvLight);
   G.fx = new FX(scene); G.gren = new Grenades(G);
-  G.player = new Player(G, W.spawn, G.loadout);
+  W.env.detect0 = W.env.detect; W.env.viewRange0 = W.env.viewRange;
+  // mission: generated from the map's anchors (seeded, avoids recent layouts); 'classic' is the fixed V2 layout used by tests
+  const classic = G.sel.layout === 'classic', L = G.sel.length;
+  const def = classic ? { map: W.id, type: 'intel', length: 'quick', seed: 0, plan: [W.id === 'forest' ? 'retrieve' : 'hack'], entry: W.entries[0], exit: W.exits[0], primary: W.anchors[0], fallback: null,
+    stages: [W.id === 'forest' ? { kind: 'retrieve', title: 'Recover the intelligence package', obj: 'intel', hold: 0, prompt: 'Take intelligence package', anchors: [W.anchors[0]], correct: 0 } : { kind: 'hack', title: 'Access the secure terminal', obj: 'terminal', hold: 3, prompt: 'Hold to access secure terminal', anchors: [W.anchors[0]], correct: 0 }] }
+    : generateMission(W, { type: G.sel.mission, length: MISSIONS[G.sel.mission].lengths.includes(L) ? L : MISSIONS[G.sel.mission].lengths[0], seed: G.sel.seed }, G.hist);
+  if (!classic) recordMission(G.hist, def);
+  G.civs = [];
+  G.player = new Player(G, def.entry, G.loadout);
   G.enemies = []; typeBag = [];
   G.sec = new Security(G, PROFILES[G.sel.ai]);
-  // the site is staffed from the first second: objective detail, door guards, roving patrols
-  const nav = W.nav, far = (p) => Math.hypot(p[0] - W.spawn.x, p[1] - W.spawn.z) > 30;
-  const post = (p, duty, wait) => {
-    const a = rnd(6.28), q = nav.snap(p[0] + Math.cos(a) * 2.5, p[1] + Math.sin(a) * 2.5);
-    return spawnEnemy(p[0], p[1], q && nav.line(nav.nearest(p[0], p[1]), q) ? [[p[0], p[1]], [q.x, q.z]] : [[p[0], p[1]]], { duty, home: p, wait });
-  };
-  const shuffle = (a) => [...a].sort(() => Math.random() - 0.5);
-  shuffle(W.posts.objective).slice(0, 3).forEach((p) => post(p, 'objective', [5, 12]));
-  shuffle(W.posts.entrance.filter(far)).slice(0, 3).forEach((p) => post(p, 'post', [6, 14]));
-  for (const r of shuffle(W.routes).slice(0, W.guards - G.enemies.length)) {
-    const pts = r.p.filter(far), s = (pts.length ? pts : r.p)[Math.floor(Math.random() * (pts.length || r.p.length))];
-    const e = spawnEnemy(s[0], s[1], r.p, { duty: 'patrol' }); e.wi = Math.floor(Math.random() * r.p.length);
+  // the site is staffed from the first second: objective detail, sentries on the other objectives, door guards, patrols
+  const nav = W.nav;
+  for (const d of deployment(W, def, W.guards + LENGTHS[def.length].extra)) {
+    if (d.route) { const e = spawnEnemy(d.p[0], d.p[1], d.route, { duty: 'patrol' }); e.wi = Math.floor(Math.random() * d.route.length); continue; }
+    const a = rnd(6.28), q = nav.snap(d.p[0] + Math.cos(a) * 2.5, d.p[1] + Math.sin(a) * 2.5), c = nav.nearest(d.p[0], d.p[1]);
+    spawnEnemy(d.p[0], d.p[1], q && c && nav.line(c, q) ? [[d.p[0], d.p[1]], [q.x, q.z]] : [[d.p[0], d.p[1]]], { duty: d.duty, home: d.p, wait: d.wait });
   }
-  // interactables
-  const o = W.objective;
-  G.objMesh = interactable(o.kind, ...o.pos);
+  // objectives, pick-ups, extraction
+  G.mission = new Mission(G, def); G.mission.begin();
   G.pickups = W.pickups.map(([kind, x, z]) => ({ kind, x, z, mesh: interactable(kind, x, nav.height(x, z), z) }));
-  const ex = W.extraction.pos;
+  const ex = def.exit.pos;
   G.exMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 6), new THREE.MeshBasicMaterial({ color: 0x40ff70 })); G.exMesh.position.set(ex[0], 0.25, ex[2]); scene.add(G.exMesh);
   G.exLight = new THREE.PointLight(0x40ff70, 6, 16, 1.5); G.exLight.position.set(ex[0], 1.2, ex[2]); scene.add(G.exLight);
   if (W.panel) { G.panelLight = new THREE.PointLight(0xff2a1a, 0, 22, 1.4); G.panelLight.position.set(W.panel.x, 2.2, W.panel.z); scene.add(G.panelLight); }
@@ -198,37 +217,43 @@ function startMission() {
   const lg = new THREE.BoxGeometry(0.004, 0.004, 1); lg.translate(0, 0, 0.5);
   G.laserBeam = new THREE.Mesh(lg, new THREE.MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); scene.add(G.laserBeam);
   G.laserDot.visible = G.laserBeam.visible = false;
-  G.stage = 0; G.hack = 0; G.time = 0; G.stats = { shots: 0, hits: 0, kills: 0, heads: 0, knife: 0, maxSec: 0 };
+  G.time = 0; G.stats = { shots: 0, hits: 0, kills: 0, heads: 0, knife: 0, maxSec: 0 };
   vig = 0; inds.forEach((i) => (i.t = 0)); subT = 0; $('subt').style.opacity = 0;
   setNV(false); G.onSecurity(0, '');
-  $('objt').textContent = o.text; toast(W.name + ' — ' + o.text.toUpperCase(), 4);
   G.audio.ambient(W.env.amb);
-  show(null); $('hud').classList.add('on');
-  G.state = 'playing'; hudCache = {};
-  if (!TEST) lock();
+  $('hud').classList.add('on'); hudCache = {};
+  // pre-mission briefing: what, where, in which order
+  const M2 = MISSIONS[def.type];
+  $('brt').textContent = M2.name; $('brs').textContent = `${W.name} · ${LENGTHS[def.length].name} · ENEMY ${PROFILES[G.sel.ai].label}`;
+  $('brl').innerHTML = `<div><i>INSERTION</i>${def.entry.name}</div>` + briefing(def).map((l) => `<div>${l}</div>`).join('') + (def.fallbackUsed ? '<div><i>NOTE</i>fallback layout used</div>' : '');
+  if (TEST || classic) { show(null); G.state = 'playing'; toast(M2.name + ' — ' + def.stages[0].title.toUpperCase(), 4); if (!TEST) lock(); }
+  else { G.state = 'brief'; show('briefov'); G.player.update(0.016); }
 }
+function beginMission() { if (G.state !== 'brief') return; show(null); G.state = 'playing'; last = performance.now(); toast(MISSIONS[G.mission.def.type].name + ' — ' + G.mission.def.stages[0].title.toUpperCase(), 4); lock(); }
 function lock() {
   try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => { $('phint').textContent = 'CLICK RESUME AGAIN TO RE-CAPTURE THE MOUSE'; }); } catch (e) { /* retried by user */ }
 }
-function show(id) { for (const k of ['menu', 'pause', 'end', 'load']) $(k).classList.toggle('on', k === id); }
+function show(id) { for (const k of ['menu', 'pause', 'end', 'load', 'briefov']) $(k).classList.toggle('on', k === id); }
 function pause() { if (G.state !== 'playing') return; G.state = 'paused'; $('phint').textContent = 'MISSION ON HOLD'; show('pause'); G.inp.k = {}; G.inp.lmb = G.inp.rmb = false; }
 function resume() { if (G.state !== 'paused') return; if (TEST) { G.state = 'playing'; show(null); } else lock(); }
 function toMenu() {
   G.state = 'menu'; disposeScene(); $('hud').classList.remove('on'); setNV(false); $('scope').style.display = 'none'; $('flashov').style.opacity = 0;
   show('menu'); if (document.pointerLockElement) document.exitPointerLock(); menuRefresh();
 }
-function endMission(win) {
+function endMission(win, reason) {
   G.state = win ? 'won' : 'dead';
   if (document.pointerLockElement) document.exitPointerLock();
   G.audio.siren(false); $('scope').style.display = 'none'; $('flashov').style.opacity = 0;
   const P = G.player, s = G.stats, t = Math.floor(G.time);
   $('endt').textContent = win ? 'MISSION COMPLETE' : 'OPERATOR DOWN'; $('endt').style.color = win ? 'var(--g)' : '#ff6a5a';
-  let sub = win ? 'EXTRACTION SUCCESSFUL' : 'MISSION FAILED';
-  if (!win && P.lastHit) { const h = P.lastHit; sub = h.fall ? 'KILLED BY A FALL' : h.blast ? `KILLED BY ${h.name.toUpperCase()}` : `KILLED BY ${h.name.toUpperCase()} — RIFLE FIRE FROM THE ${compass(h.x - P.pos.x, h.z - P.pos.z)}, ${Math.round(h.dist)} M`; }
+  $('endt').textContent = win ? 'MISSION COMPLETE' : reason ? 'MISSION FAILED' : 'OPERATOR DOWN';
+  let sub = win ? 'EXTRACTION SUCCESSFUL' : reason || 'MISSION FAILED';
+  if (!win && !reason && P.lastHit) { const h = P.lastHit; sub = h.fall ? 'KILLED BY A FALL' : h.blast ? `KILLED BY ${h.name.toUpperCase()}` : `KILLED BY ${h.name.toUpperCase()} — RIFLE FIRE FROM THE ${compass(h.x - P.pos.x, h.z - P.pos.z)}, ${Math.round(h.dist)} M`; }
   $('ends').textContent = sub;
-  const rows = [['Map', G.world.name], ['Enemy intelligence', PROFILES[G.sel.ai].label], ['Time', `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`],
+  const md = G.mission.def;
+  const rows = [['Mission', MISSIONS[md.type].short + ' · ' + LENGTHS[md.length].name], ['Map', G.world.name], ['Enemy intelligence', PROFILES[G.sel.ai].label], ['Time', `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`],
     ['Hostiles neutralised', `${s.kills} / ${G.enemies.length}`], ['Headshots / knife kills', `${s.heads} / ${s.knife}`], ['Accuracy', s.shots ? Math.round((s.hits / s.shots) * 100) + '%' : '—'],
-    ['Highest security level', LEVELS[s.maxSec]], ['Health remaining', Math.ceil(P.hp)], ['Objective', G.stage ? 'Secured' : 'Not secured']];
+    ['Highest security level', LEVELS[s.maxSec]], ['Health remaining', Math.ceil(P.hp)], ['Objectives completed', `${Math.min(G.mission.i, md.stages.length)} / ${md.stages.length}`]];
   $('endstats').innerHTML = rows.map(([a, b]) => `<span>${a}</span><b>${b}</b>`).join('');
   show('end'); win ? G.audio.win() : G.audio.lose();
 }
@@ -240,15 +265,6 @@ function setNV(on) {
   if (!G.world) return;
   G.nvLight.intensity = on ? 2.6 : 0; G.scene.fog.density = G.world.env.fog[1] * (on ? 0.5 : 1); G.wlight.intensity = on ? 1.6 : 0.4; G.scene.environmentIntensity = on ? 0.7 : 0.12;
 }
-function completeObjective() {
-  const W = G.world;
-  G.stage = 1; G.hack = 0; G.audio.objective();
-  if (G.objMesh.screen) G.objMesh.screen.material.color.setHex(0xffb648); else G.scene.remove(G.objMesh);
-  $('objt').textContent = W.extraction.text; toast(W.objective.done + ' — ' + W.extraction.text.toUpperCase(), 4);
-  // the objective itself is alarmed: the site learns that it was touched, not where the operator is now
-  G.sec.report = { x: W.objective.pos[0], z: W.objective.pos[2], t: G.sec.t, kind: 'alarm' }; G.sec.lockdown('SILENT ALARM — LOCKDOWN');
-}
-
 // ---------- HUD ----------
 let vig = 0, toastT = 0, hitT = 0, subT = 0, hudCache = {};
 const inds = [];
@@ -303,34 +319,29 @@ function updateHUD(dt) {
     const ang = Math.atan2(n.x - P.pos.x, -(n.z - P.pos.z)) + P.yaw;
     n.el.style.transform = `rotate(${ang}rad)`; n.el.style.opacity = Math.min(1, n.t / n.life);
   }
-  // objective marker
-  const t = G.stage === 0 ? W.objective.pos : W.extraction.pos, v = G.v3.set(t[0], t[1] + 1, t[2]), d = Math.hypot(t[0] - P.pos.x, t[2] - P.pos.z);
+  // objective marker (points at the reported location of the current objective, or the extraction point)
+  const t = G.mission.focus(), v = G.v3.set(t[0], t[1] + 1, t[2]), d = Math.hypot(t[0] - P.pos.x, t[2] - P.pos.z);
   v.project(G.camera);
   let sx = v.x, sy = v.y;
   if (v.z > 1) { sx = -sx; sy = -1; }
   const m = Math.max(Math.abs(sx), Math.abs(sy)); if (m > 0.9 || v.z > 1) { const k = 0.9 / (m || 1); sx *= k; sy *= k; }
   const ms = $('mark').style; ms.left = ((sx + 1) / 2) * innerWidth + 'px'; ms.top = ((1 - sy) / 2) * innerHeight + 'px'; ms.opacity = P.scoped ? 0 : 1;
-  setText('mark', (G.stage === 0 ? 'OBJECTIVE ' : 'EXTRACT ') + Math.round(d) + ' M');
+  setText('objt', G.mission.lines().map((l) => `<div class="o-${l.state}">${l.state === 'done' ? '&#10003;' : l.state === 'now' ? '&#9656;' : '&middot;'} ${l.t}</div>`).join(''));
+  setText('mark', (G.mission.complete ? 'EXTRACT ' : 'OBJECTIVE ') + Math.round(d) + ' M');
 }
 
 function updateMission(dt) {
   const P = G.player, W = G.world, inp = G.inp;
   G.time += dt; G.stats.maxSec = Math.max(G.stats.maxSec, G.sec.level);
-  let prompt = '';
-  const near = (x, z, r) => Math.hypot(x - P.pos.x, z - P.pos.z) < r;
-  if (G.stage === 0) {
-    const o = W.objective;
-    if (near(o.pos[0], o.pos[2], 2.5)) {
-      prompt = `<b>E</b>${o.prompt}`;
-      if (o.hold) { if (inp.k.KeyE) { G.hack += dt; if (G.hack >= o.hold) completeObjective(); } else G.hack = Math.max(0, G.hack - dt * 2); }
-      else if (inp.e) completeObjective();
-    } else G.hack = 0;
-  } else if (near(W.extraction.pos[0], W.extraction.pos[2], 3.2)) return endMission(true);
+  const near = (x, z, r) => Math.hypot(x - P.pos.x, z - P.pos.z) < r, Mi = G.mission, ex = Mi.def.exit.pos;
+  let prompt = Mi.update(dt, inp);
+  if (Mi.failed) return endMission(false, Mi.failed);
+  if (Mi.complete && near(ex[0], ex[2], 3.2)) { if (Mi.civNear()) return endMission(true); prompt = `Wait for the ${Mi.civ.kind === 'hvt' ? 'target' : 'hostage'} to reach you`; }
   for (const pk of G.pickups) {
     if (pk.taken || !near(pk.x, pk.z, 1.9)) continue;
     const med = pk.kind === 'med';
     prompt = prompt || `<b>E</b>${med ? 'Take medical supplies' : 'Take ammunition and grenades'}`;
-    if (inp.e && !(G.stage === 0 && near(W.objective.pos[0], W.objective.pos[2], 2.5))) {
+    if (inp.e && !prompt.includes(Mi.stage ? Mi.stage.prompt : '\u0000')) {
       pk.taken = true; G.scene.remove(pk.mesh); G.audio.pickup();
       if (med) { P.inv.med = Math.min(4, P.inv.med + 1); P.inv.stim = Math.min(4, P.inv.stim + 1); }
       else { for (const s of P.slots) if (!s.st.melee) s.reserve = Math.min(s.st.reserve * 2, s.reserve + s.st.mag * 2); P.inv.frag = Math.min(4, P.inv.frag + 1); P.inv.flash = Math.min(4, P.inv.flash + 1); }
@@ -339,11 +350,11 @@ function updateMission(dt) {
   }
   inp.e = false;
   const pe = $('prompt'); if (hudCache.pr !== prompt) { hudCache.pr = prompt; pe.innerHTML = prompt; pe.style.display = prompt ? 'block' : 'none'; }
-  const med = P.use && P.use.type === 'med', hk = (G.stage === 0 && G.hack > 0) || med;
-  setStyle('hack', 'display', hk ? 'block' : 'none'); if (hk) $('hackf').style.width = (med ? P.use.t / P.use.dur : G.hack / W.objective.hold) * 100 + '%';
+  const med = P.use && P.use.type === 'med', hk = Mi.hold > 0 || med;
+  setStyle('hack', 'display', hk ? 'block' : 'none'); if (hk) $('hackf').style.width = (med ? P.use.t / P.use.dur : Mi.hold / ((Mi.stage && Mi.stage.hold) || 1)) * 100 + '%';
   // ambient light animation
   for (const d of W.dyn) d.l.intensity = d.base * (d.kind === 'fire' ? 0.75 + Math.sin(G.time * 11) * 0.12 + Math.random() * 0.2 : Math.sin(G.time * 31) > 0.86 || Math.random() < 0.02 ? 0.25 : 1);
-  G.exLight.intensity = G.stage ? 14 + Math.sin(G.time * 4) * 5 : 4;
+  G.exLight.intensity = Mi.complete ? 14 + Math.sin(G.time * 4) * 5 : 3;
   if (G.panelLight && G.sec.level === 3) G.panelLight.intensity = 18 + Math.sin(G.time * 7) * 16;
   // laser: from the attachment, stops at the first surface or body
   const w = P.w, on = !w.melee && w.att.laser && P.laserOn && P.swT <= 0 && !P.reloading && !P.use && P.sprintF < 0.5 && !P.scoped;
@@ -364,6 +375,7 @@ function step(dt) {
   G.player.update(dt);
   G.inp.mx = G.inp.my = 0;
   for (const e of G.enemies) e.update(dt);
+  for (const c of G.civs) c.update(dt);
   G.sec.update(dt); G.gren.update(dt);
   G.fx.update(dt);
   updateMission(dt);
@@ -429,8 +441,8 @@ document.addEventListener('pointerlockchange', () => {
 
 // ---------- menu ----------
 const BRIEF = {
-  forest: 'A hostile detachment holds an abandoned outpost in the forest. Guards watch the gates, patrol the treeline and protect the command hut. Take the intelligence package and reach the extraction flare in the north-east clearing. It is dark out there — use night vision.',
-  warehouse: 'A secured terminal sits in the guarded office of an industrial warehouse. Enter from the loading yard, access the terminal and exfiltrate through the west back lot. Side doors, the outer alleys and the raised dock give you alternatives to the main hall.',
+  forest: 'FOREST OUTPOST — a fenced compound, a remote bunker, a ruin and a camp spread through dark woodland. Night vision recommended.',
+  warehouse: 'INDUSTRIAL WAREHOUSE — main hall, office, machine room, raised dock, yards and service alleys. Close quarters, many routes.',
 };
 const AI_NOTE = { recruit: 'RECRUIT — inexperienced guards: slow decisions, long clumsy exposures, unreliable radio calls.', tactical: 'TACTICAL — trained guards: use cover properly, lean to fire, flank, radio contacts and defend the objective.', elite: 'ELITE SQUAD — a coordinated team: bounding movement, suppressive fire, multiple angles, grenades and flashbangs.' };
 const M = { tab: 'play', edit: 'primary', scene: null, obj: null, spin: 0 };
@@ -464,6 +476,9 @@ function menuRender(dt) {
 function optHTML(v, title, sub, sel, cls = '') { return `<button class="opt ${cls} ${sel ? 'sel' : ''}" data-v="${v}">${title}${sub ? `<small>${sub}</small>` : ''}</button>`; }
 function menuBuild() {
   const L = G.loadout, q = (k) => document.querySelector(`.opts[data-k="${k}"]`);
+  if (!MISSIONS[G.sel.mission].lengths.includes(G.sel.length)) G.sel.length = MISSIONS[G.sel.mission].lengths[0]; // only valid combinations
+  q('mission').innerHTML = Object.keys(MISSIONS).map((k) => optHTML(k, MISSIONS[k].short, MISSIONS[k].desc, G.sel.mission === k)).join('');
+  q('length').innerHTML = MISSIONS[G.sel.mission].lengths.map((k) => optHTML(k, LENGTHS[k].name[0] + LENGTHS[k].name.slice(1).toLowerCase(), LENGTHS[k].desc, G.sel.length === k)).join('');
   for (const slot of ['primary', 'secondary']) q(slot).innerHTML = Object.keys(WEAPONS).filter((id) => WEAPONS[id].slot === slot).map((id) => optHTML(id, WEAPONS[id].name, WEAPONS[id].desc, L[slot] === id)).join('');
   q('kit').innerHTML = Object.keys(KITS).map((k) => optHTML(k, KITS[k].name, KITS[k].desc, L.kit === k)).join('');
   const id = L[M.edit], w = WEAPONS[id], a = L.att[id];
@@ -474,7 +489,7 @@ function menuBuild() {
   const st = statsFor(id, a), bar = (n, v) => `<span>${n}</span><i><b style="width:${Math.round(Math.max(4, Math.min(100, v)))}%"></b></i>`;
   $('bars').innerHTML = bar('DAMAGE', (st.dmg * (st.pellets || 1)) / 1.2) + bar('FIRE RATE', st.rpm / 9) + bar('CONTROL', 100 - st.recoil * 20) + bar('HANDLING', 100 - st.adsT * 230) + bar('STEALTH', 100 - st.noise * 1.9);
   $('losum').innerHTML = `${WEAPONS[L.primary].name} <span style="color:var(--a)">${attText(L.primary, L.att[L.primary])}</span><br>${WEAPONS[L.secondary].name} <span style="color:var(--a)">${attText(L.secondary, L.att[L.secondary])}</span><br>Combat knife · ${KITS[L.kit].name} kit — ${KITS[L.kit].desc}`;
-  $('brief').textContent = BRIEF[G.sel.map] + ' ' + AI_NOTE[G.sel.ai];
+  $('brief').innerHTML = `<b style="color:#fff">${MISSIONS[G.sel.mission].name}</b> — ${MISSIONS[G.sel.mission].desc}. ${LENGTHS[G.sel.length].desc}.<br>${BRIEF[G.sel.map]}<br>${AI_NOTE[G.sel.ai]}<br><span style="color:#74838a">Insertion point, objective locations and extraction change from run to run; the exact sequence is shown before you begin.</span>`;
   saveLoadout(L); menuRefresh();
 }
 document.querySelectorAll('.nav').forEach((b) => b.addEventListener('click', () => {
@@ -484,7 +499,8 @@ document.querySelectorAll('.nav').forEach((b) => b.addEventListener('click', () 
 $('content').addEventListener('click', (ev) => {
   const b = ev.target.closest('.opt'); if (!b || !b.dataset.v) return;
   const row = b.parentElement, k = row.dataset.k, v = b.dataset.v, L = G.loadout;
-  if (k === 'map' || k === 'ai' || k === 'quality') { G.sel[k] = v; row.querySelectorAll('.opt').forEach((o) => o.classList.toggle('sel', o === b)); if (k === 'quality') { saveSettings(); applyQuality(); } }
+  if (k === 'mission' || k === 'length') G.sel[k] = v;
+  else if (k === 'map' || k === 'ai' || k === 'quality') { G.sel[k] = v; row.querySelectorAll('.opt').forEach((o) => o.classList.toggle('sel', o === b)); if (k === 'quality') { saveSettings(); applyQuality(); } }
   else if (k === 'primary' || k === 'secondary') { L[k] = v; M.edit = k; }
   else if (k === 'kit') L.kit = v;
   else if (row.id === 'edit') M.edit = v;
@@ -498,6 +514,7 @@ slider('sens', 'sens', (v) => v.toFixed(2)); slider('fov', 'fov', (v) => v); sli
 document.querySelectorAll('.opts[data-k="quality"] .opt').forEach((o) => o.classList.toggle('sel', o.dataset.v === G.sel.quality));
 const begin = () => { G.audio.init(); if (G.audio.master) G.audio.master.gain.value = G.vol; startMission(); };
 $('start').onclick = begin; $('again').onclick = begin; $('prestart').onclick = begin;
+$('brgo').onclick = beginMission; $('brback').onclick = toMenu;
 $('resume').onclick = resume; $('pmenu').onclick = toMenu; $('emenu').onclick = toMenu;
 // night-vision grain
 { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), im = g.createImageData(128, 128);
