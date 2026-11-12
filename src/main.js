@@ -11,6 +11,7 @@ import { Security, LEVELS } from './squad.js';
 import { Grenades } from './equipment.js';
 import { FX } from './fx.js';
 import { makeBallistics } from './ballistics.js';
+import { Range } from './range.js';
 import { MISSIONS, LENGTHS, Mission, generateMission, deployment, briefing, loadHistory, recordMission, validate } from './missions.js';
 import { Audio } from './audio.js';
 
@@ -115,6 +116,7 @@ G.melee = () => {
 };
 G.spawnGrenade = (type, pos, vel, owner) => G.gren.spawn(type, pos, vel, owner);
 G.onKill = () => { G.stats.kills++; };
+G.spawnEnemy = (...a) => spawnEnemy(...a);
 G.onHurt = (from, d) => { G.audio.hurt(); vig = Math.min(1, vig + 0.3 + d * 0.012); addInd(from.x, from.z, '#ff4a3a', 1.2); };
 G.onSecurity = (level, msg) => {
   const el = $('sec'); el.className = 'hp l' + level; el.textContent = 'SECURITY · ' + LEVELS[level];
@@ -183,7 +185,8 @@ function startMission() {
   const scene = (G.scene = new THREE.Scene()), ws = (G.wscene = new THREE.Scene());
   scene.environment = ENV; scene.environmentIntensity = 0.12; ws.environment = ENV; ws.environmentIntensity = 0.2;
   G.wlight = new THREE.HemisphereLight(0xaab8d0, 0x202428, 0.4); ws.add(G.wlight); const wd = new THREE.DirectionalLight(0xfff2e0, 0.75); wd.position.set(-1, 2, 1.5); ws.add(wd);
-  const W = (G.world = buildWorld(G.sel.map, scene));
+  const isRange = G.sel.mode === 'range';
+  const W = (G.world = buildWorld(isRange ? 'range' : G.sel.map, scene));
   if (G.sel.quality !== 'med') W.moon.shadow.mapSize.setScalar(G.sel.quality === 'high' ? 4096 : 1024);
   if (G.sel.quality === 'low') for (const m of W.meshes) if (m.userData.detail) m.visible = false; // ground clutter off
   G.nvLight = new THREE.AmbientLight(0xffffff, 0); scene.add(G.nvLight);
@@ -191,23 +194,25 @@ function startMission() {
   W.env.detect0 = W.env.detect; W.env.viewRange0 = W.env.viewRange;
   // mission: generated from the map's anchors (seeded, avoids recent layouts); 'classic' is the fixed V2 layout used by tests
   const classic = G.sel.layout === 'classic', L = G.sel.length;
-  const def = classic ? { map: W.id, type: 'intel', length: 'quick', seed: 0, plan: [W.id === 'forest' ? 'retrieve' : 'hack'], entry: W.entries[0], exit: W.exits[0], primary: W.anchors[0], fallback: null,
+  const def = isRange ? { map: 'range', type: 'range', length: 'quick', seed: 0, plan: [], entry: W.entries[0], exit: { id: '-', name: '-', pos: [0, 0, 9999] }, primary: { id: 'range', name: 'range', at: [0, 0, -50], stand: [0, -50], posts: [] }, fallback: null, stages: [] }
+    : classic ? { map: W.id, type: 'intel', length: 'quick', seed: 0, plan: [W.id === 'forest' ? 'retrieve' : 'hack'], entry: W.entries[0], exit: W.exits[0], primary: W.anchors[0], fallback: null,
     stages: [W.id === 'forest' ? { kind: 'retrieve', title: 'Recover the intelligence package', obj: 'intel', hold: 0, prompt: 'Take intelligence package', anchors: [W.anchors[0]], correct: 0 } : { kind: 'hack', title: 'Access the secure terminal', obj: 'terminal', hold: 3, prompt: 'Hold to access secure terminal', anchors: [W.anchors[0]], correct: 0 }] }
     : generateMission(W, { type: G.sel.mission, length: MISSIONS[G.sel.mission].lengths.includes(L) ? L : MISSIONS[G.sel.mission].lengths[0], seed: G.sel.seed }, G.hist);
-  if (!classic) recordMission(G.hist, def);
+  if (!classic && !isRange) recordMission(G.hist, def);
   G.civs = [];
   G.player = new Player(G, def.entry, G.loadout);
   G.enemies = []; typeBag = [];
   G.sec = new Security(G, PROFILES[G.sel.ai]);
   // the site is staffed from the first second: objective detail, sentries on the other objectives, door guards, patrols
   const nav = W.nav;
-  for (const d of deployment(W, def, W.guards + LENGTHS[def.length].extra)) {
+  for (const d of isRange ? [] : deployment(W, def, W.guards + LENGTHS[def.length].extra)) {
     if (d.route) { const e = spawnEnemy(d.p[0], d.p[1], d.route, { duty: 'patrol' }); e.wi = Math.floor(Math.random() * d.route.length); continue; }
     const a = rnd(6.28), q = nav.snap(d.p[0] + Math.cos(a) * 2.5, d.p[1] + Math.sin(a) * 2.5), c = nav.nearest(d.p[0], d.p[1]);
     spawnEnemy(d.p[0], d.p[1], q && c && nav.line(c, q) ? [[d.p[0], d.p[1]], [q.x, q.z]] : [[d.p[0], d.p[1]]], { duty: d.duty, home: d.p, wait: d.wait });
   }
   // objectives, pick-ups, extraction
   G.mission = new Mission(G, def); G.mission.begin();
+  G.range = isRange ? new Range(G) : null;
   G.pickups = W.pickups.map(([kind, x, z]) => ({ kind, x, z, mesh: interactable(kind, x, nav.height(x, z), z) }));
   const ex = def.exit.pos;
   G.exMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 6), new THREE.MeshBasicMaterial({ color: 0x40ff70 })); G.exMesh.position.set(ex[0], 0.25, ex[2]); scene.add(G.exMesh);
@@ -223,6 +228,7 @@ function startMission() {
   G.audio.ambient(W.env.amb);
   $('hud').classList.add('on'); hudCache = {};
   // pre-mission briefing: what, where, in which order
+  if (isRange) { show(null); G.state = 'playing'; toast('TRAINING RANGE — WEAPONS FREE', 3); if (!TEST) lock(); return; }
   const M2 = MISSIONS[def.type];
   $('brt').textContent = M2.name; $('brs').textContent = `${W.name} · ${LENGTHS[def.length].name} · ENEMY ${PROFILES[G.sel.ai].label}`;
   $('brl').innerHTML = `<div><i>INSERTION</i>${def.entry.name}</div>` + briefing(def).map((l) => `<div>${l}</div>`).join('') + (def.fallbackUsed ? '<div><i>NOTE</i>fallback layout used</div>' : '');
@@ -327,8 +333,9 @@ function updateHUD(dt) {
   if (v.z > 1) { sx = -sx; sy = -1; }
   const m = Math.max(Math.abs(sx), Math.abs(sy)); if (m > 0.9 || v.z > 1) { const k = 0.9 / (m || 1); sx *= k; sy *= k; }
   const ms = $('mark').style; ms.left = ((sx + 1) / 2) * innerWidth + 'px'; ms.top = ((1 - sy) / 2) * innerHeight + 'px'; ms.opacity = P.scoped ? 0 : 1;
-  setText('objt', G.mission.lines().map((l) => `<div class="o-${l.state}">${l.state === 'done' ? '&#10003;' : l.state === 'now' ? '&#9656;' : '&middot;'} ${l.t}</div>`).join(''));
-  setText('mark', (G.mission.complete ? 'EXTRACT ' : 'OBJECTIVE ') + Math.round(d) + ' M');
+  if (G.range) { setText('objt', G.range.hud()); ms.opacity = 0; }
+  else setText('objt', G.mission.lines().map((l) => `<div class="o-${l.state}">${l.state === 'done' ? '&#10003;' : l.state === 'now' ? '&#9656;' : '&middot;'} ${l.t}</div>`).join(''));
+  setText('mark', G.range ? '' : (G.mission.complete ? 'EXTRACT ' : 'OBJECTIVE ') + Math.round(d) + ' M');
 }
 
 function updateMission(dt) {
@@ -377,6 +384,7 @@ function step(dt) {
   G.inp.mx = G.inp.my = 0;
   for (const e of G.enemies) e.update(dt);
   for (const c of G.civs) c.update(dt);
+  if (G.range) G.range.update(dt);
   G.sec.update(dt); G.gren.update(dt);
   G.fx.update(dt);
   updateMission(dt);
@@ -421,6 +429,7 @@ addEventListener('keydown', (ev) => {
   else if (ev.code === 'KeyX') P.startUse('stim');
   else if (ev.code === 'KeyV') P.startUse('melee');
   else if (ev.code === 'Digit4') P.cycleThrow();
+  else if (G.range && /^Digit[5678]$/.test(ev.code)) G.range.key(ev.code);
   else if (/^Digit[123]$/.test(ev.code)) P.switchTo(+ev.code[5] - 1);
   else if (ev.code === 'Escape' && TEST) pause();
 });
@@ -517,7 +526,7 @@ if (G.vol == null) G.vol = 0.75;
 slider('sens', 'sens', (v) => v.toFixed(2)); slider('fov', 'fov', (v) => v); slider('vol', 'vol', (v) => Math.round(v * 100), () => { if (G.audio.master) G.audio.master.gain.value = G.vol; });
 document.querySelectorAll('.opts[data-k="quality"] .opt').forEach((o) => o.classList.toggle('sel', o.dataset.v === G.sel.quality));
 const begin = () => { G.audio.init(); if (G.audio.master) G.audio.master.gain.value = G.vol; startMission(); };
-$('start').onclick = begin; $('again').onclick = begin; $('prestart').onclick = begin;
+$('start').onclick = () => { G.sel.mode = 'mission'; begin(); }; $('train').onclick = () => { G.sel.mode = 'range'; begin(); }; $('again').onclick = begin; $('prestart').onclick = begin;
 $('brgo').onclick = beginMission; $('brback').onclick = toMenu;
 $('resume').onclick = resume; $('pmenu').onclick = toMenu; $('emenu').onclick = toMenu;
 // night-vision grain

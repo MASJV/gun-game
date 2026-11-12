@@ -53,7 +53,7 @@ export class Grenades {
   detonate(n) {
     const G = this.g, P = G.player, p = n.pos, by = p.y + 0.35, dp = Math.hypot(P.pos.x - p.x, P.pos.z - p.z);
     if (n.type === 'frag') {
-      G.fx.explosion(p); G.audio.explosion(dp); G.sound(p, 70, 'explosion');
+      G.fx.explosion(p); G.audio.explosion(dp); G.sound(p, 70, 'explosion'); if (G.range) G.range.onBlast(p);
       const blast = (x, y, z, h) => { // damage 0..150, blocked by solid cover
         const d = Math.hypot(x - p.x, y + h * 0.5 - by, z - p.z); if (d > 8) return 0;
         const ex = G.losB(p.x, by, p.z, x, y + h * 0.55, z) ? 1 : G.losB(p.x, by, p.z, x, y + h * 0.9, z) ? 0.45 : 0;

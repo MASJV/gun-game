@@ -460,6 +460,40 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('mission: death screen explains the cause; restart, pause and resume work', d.hud && d.state === 'dead' && /KILLED BY/.test(d.sub) && d.restart[0] === 'playing' && d.restart[1] === 100 && d.paused === 'paused' && d.resumed === 'playing', d);
   });
 
+  await run('range', async () => {
+    await p.evaluate(() => { const G = window.__SP; if (G.state === 'playing') press('Escape'); if (G.state === 'paused') document.getElementById('pmenu').click(); else if (G.state !== 'menu') document.getElementById('emenu').click();
+      const L = G.loadout; L.primary = 'm4'; L.secondary = 'pistol'; Object.assign(L.att.m4, { optic: 'iron', muzzle: false, grip: false, laser: false }); document.getElementById('train').click(); });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, R = G.range, o = {}; const s = R.s;
+      o.boot = [G.state, !!R, G.world.name, R.targets.length, G.enemies.length, G.sec.level];
+      const aim = (x, z, y) => { const dx = x - P.pos.x, dz = z - P.pos.z; P.yaw = Math.atan2(-dx, -dz); P.pitch = Math.atan2(y - (P.pos.y + 1.62), Math.hypot(dx, dz)); };
+      const shot = (x, z, y) => { aim(x, z, y); G.inp.rmb = true; sim(0.5); aim(x, z, y); P.swT2 = 0; sim(0.03); P.slot.mag = Math.max(1, P.slot.mag); G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.04); G.inp.lmb = false; sim(0.3); return R.last && { d: Math.round(R.last.dist), z: R.last.zone, dmg: Math.round(R.last.dmg) }; };
+      P.pos.set(-2.5, 0, 6); o.body = shot(-2.5, -10, 1.0); o.afterBody = [s.shots, s.hits, s.heads]; o.head = shot(-2.5, -10, 1.6); o.afterHead = [s.shots, s.hits, s.heads];
+      // cover lane: steel plate and fence stop the round, the target behind is untouched
+      P.pos.set(-11, 0, 6); const h0 = s.hits; shot(-11, -18, 1.0); shot(-11, -32, 1.0); o.covered = [s.hits - h0, R.targets.filter((t) => t.note && !t.pit).every((t) => t.flash <= 0 && t.dmg === 0)]; G.inp.rmb = false; sim(0.4);
+      // weapon bench: cycle to the sniper, zoom in and hit the 100 m target
+      let guard = 0; while (P.slots[0].id !== 'sniper' && guard++ < 6) { press('Digit5'); sim(0.7); } o.bench = P.slots[0].id; const z0 = P.slots[0].st.optic.name; press('Digit7'); sim(0.2); press('Digit8'); sim(0.2); o.optic = [z0, P.slots[0].st.optic.name, P.slots[0].st.sup]; press('Digit7'); sim(0.2);
+      P.pos.set(0.4, 0, 6); P.crouchToggle = true; sim(0.5); aim(0.4, -100, 1.0); G.inp.rmb = true; sim(0.8); for (let i = 0; i < 24; i++) P.zoomStep(1); o.zoom = P.slot.zoom; const hh = s.hits; const far = shot(0.4, -100, 1.0); o.far = [far, s.hits - hh]; G.inp.rmb = false; P.crouchToggle = false; sim(0.5);
+      // moving target really moves, its collision follows
+      const mv = R.targets.find((t) => t.move), x0 = mv.x; sim(1.5); o.moving = [Math.abs(mv.x - x0) > 0.5, Math.abs(mv.cols[0].x0 + 0.25 - mv.x) < 1e-6];
+      // grenade pit: open targets fall, the one behind the wall stays up
+      const V = G.v1.constructor; P.pos.set(0, 0, 6); G.spawnGrenade('frag', new V(10.3, 0.2, -12.8), new V(0, 0, 0), 'player'); sim(3.2); const pit = R.targets.filter((t) => t.pit); o.pit = [pit.filter((t) => !t.note && t.down > 0).length, pit.find((t) => t.note).down > 0, R.msg];
+      // unlimited supplies and no way to fail
+      P.slots[0].reserve = 0; P.inv.frag = 0; sim(0.2); o.supply = [P.slots[0].reserve > 0, P.inv.frag]; P.damage(500, P.pos, {}); sim(0.2); o.alive = [G.state, P.hp];
+      o.dummies = R.dummies.length; const dm = R.dummies[0]; dm.damage(999, P.pos, 'torso'); sim(4); o.respawn = R.dummies.length === 2 && R.dummies.every((d) => !d.dead);
+      press('Escape'); document.getElementById('pmenu').click(); o.menu = G.state;
+      return o;
+    });
+    check('range: loads from the menu with targets and passive dummies, no security response', o.boot[0] === 'playing' && o.boot[1] && o.boot[2] === 'TRAINING RANGE' && o.boot[3] >= 19 && o.boot[4] === 2 && o.boot[5] === 0, o.boot);
+    check('range: hits register with distance, zone and damage; accuracy readout counts them', o.body && o.body.z === 'body' && o.body.d >= 15 && o.body.d <= 17 && o.body.dmg === 28 && o.head && o.head.z === 'head' && o.head.dmg === 70 && o.afterHead.join() === '2,2,1', [o.body, o.head, o.afterHead]);
+    check('range: steel plate and fence stop rounds before the targets behind them', o.covered[0] === 0 && o.covered[1], o.covered);
+    check('range: weapon bench cycles weapon, optic and suppressor; 10x sniper shot hits at 100 m', o.bench === 'sniper' && o.optic[0] !== o.optic[1] && o.optic[2] === true && o.zoom === 10 && o.far[1] === 1 && o.far[0].d > 100, [o.bench, o.optic, o.zoom, o.far]);
+    check('range: moving targets move with their collision; grenade pit respects cover', o.moving[0] && o.moving[1] && o.pit[0] >= 2 && o.pit[1] === false, [o.moving, o.pit]);
+    check('range: unlimited supplies, no failure state, dummies respawn, returns to the menu', o.supply[0] && o.supply[1] === 3 && o.alive[0] === 'playing' && o.alive[1] === 100 && o.respawn && o.menu === 'menu', [o.supply, o.alive, o.respawn, o.menu]);
+    await start('warehouse', 'tactical');
+    check('range: a normal mission starts afterwards', await p.evaluate(() => { const G = window.__SP; return G.state === 'playing' && !G.range && G.enemies.length === 10; }));
+  });
+
   await run('stability', async () => {
     const mem = [];
     for (let i = 0; i < 4; i++) { await start(i % 2 ? 'forest' : 'warehouse', 'elite'); mem.push(await p.evaluate(() => { const G = window.__SP; sim(3); let ms = 0; const t0 = performance.now(); for (let k = 0; k < 300; k++) G.step(1 / 60); ms = (performance.now() - t0) / 300; return { ms: +ms.toFixed(2), heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0 }; })); }

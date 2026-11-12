@@ -369,7 +369,7 @@ export function buildCover(cols, nav) {
 }
 
 // ---------- prop helpers ----------
-function wall(B, tex, hex, ax, az, bx, bz, h, gaps = [], t = 0.3, o = {}) {
+export function wall(B, tex, hex, ax, az, bx, bz, h, gaps = [], t = 0.3, o = {}) {
   const alongX = az === bz, s = alongX ? ax : az, e = alongX ? bx : bz;
   const seg = (p, q, y0, y1) => {
     if (q - p < 0.02 || y1 - y0 < 0.02) return;
@@ -389,13 +389,13 @@ function room(B, tex, hex, x0, z0, x1, z1, h, d = {}, t = 0.3) {
   wall(B, tex, hex, x0, z0, x1, z0, h, d.n, t); wall(B, tex, hex, x0, z1, x1, z1, h, d.s, t);
   wall(B, tex, hex, x0, z0, x0, z1, h, d.w, t); wall(B, tex, hex, x1, z0, x1, z1, h, d.e, t);
 }
-function crate(B, x, z, s = 1, y = 0, hex = 0x5d4c34) { B.box('wood', hex, x, y, z, s, s, s, { rot: 0 }); }
+export function crate(B, x, z, s = 1, y = 0, hex = 0x5d4c34) { B.box('wood', hex, x, y, z, s, s, s, { rot: 0 }); }
 function barrel(B, x, z, hex = 0x4a5a48) {
   if (B.prop('barrel', x, 0, z, B.rng() * 6, 0.92, { tint: hex === 0x4a5a48 ? 0x8a9a80 : 0xffffff })) return B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1.05, z + 0.33);
   B.geo('metal', hex, new THREE.CylinderGeometry(0.33, 0.33, 1, 10), M(x, 0.5, z));
   B.collider(x - 0.33, 0, z - 0.33, x + 0.33, 1, z + 0.33);
 }
-function sandbags(B, x, z, len, alongX) {
+export function sandbags(B, x, z, len, alongX) {
   const w = alongX ? len : 0.75, d = alongX ? 0.75 : len;
   B.box('plain', 0x6a6046, x, 0, z, w, 0.7, d, { col: false }); B.box('plain', 0x5f573f, x, 0.7, z, w * 0.96, 0.35, d * 0.7, { col: false });
   B.collider(x - w / 2, 0, z - d / 2, x + w / 2, 1.05, z + d / 2);
@@ -452,7 +452,7 @@ function bush(B, x, z) {
     for (let i = 0; i < 3; i++) B.geo('grass', 0x22351f, new THREE.IcosahedronGeometry(0.65 + r() * 0.35, 0), M(x + (r() - 0.5) * 0.9, 0.5 + r() * 0.3, z + (r() - 0.5) * 0.9, r() * 3, r() * 3, 0), { uv: 2 });
   B.collider(x - 0.8, 0, z - 0.8, x + 0.8, 1.3, z + 0.8, { solid: false, bullet: false });
 }
-function light(W, scene, hex, intensity, dist, x, y, z, dyn) {
+export function light(W, scene, hex, intensity, dist, x, y, z, dyn) {
   const l = new THREE.PointLight(hex, intensity, dist, 1.6);
   l.position.set(x, y, z); scene.add(l); l.userData.base = intensity; W.lights.push(l);
   if (dyn) W.dyn.push({ l, base: intensity, kind: dyn });
@@ -725,9 +725,11 @@ function warehouse(B, W, scene) {
   };
 }
 
+const MAPS = {}; // extra maps registered by other modules (e.g. the training range)
+export function registerMap(id, fn) { MAPS[id] = fn; }
 export function buildWorld(id, scene) {
   const B = new Builder(), W = { id, dyn: [], lights: [] };
-  Object.assign(W, id === 'forest' ? forest(B, W, scene) : warehouse(B, W, scene));
+  Object.assign(W, (MAPS[id] || (id === 'forest' ? forest : warehouse))(B, W, scene));
   W.meshes = B.finish(scene);
   W.colliders = B.col; W.nav = new Nav(B.col, W.bounds); W.cover = buildCover(B.col, W.nav);
   const e = W.env;

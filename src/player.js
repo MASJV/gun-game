@@ -33,6 +33,12 @@ export class Player {
     this.boltT = 0; this.relDur = 1; this.relIn = false; this.pumpT = 0; this.breath = 4; this.steady = false; this.swT2 = 0;
     this.fwd = new THREE.Vector3(); this._v = new THREE.Vector3(); this._v2 = new THREE.Vector3(); this.muzzleW = new THREE.Vector3(); this.laserW = new THREE.Vector3(); this.eyePos = new THREE.Vector3();
   }
+  setSlot(i, id, att) { // replace the weapon in a slot (training range bench)
+    const G = this.g, old = this.slots[i], st = statsFor(id, att), view = buildView(id, att);
+    G.wscene.remove(old.view); view.visible = this.shown === i; G.wscene.add(view);
+    this.slots[i] = { id, st, view, mag: st.mag, reserve: st.reserve, zoom: st.optic && st.optic.zoom ? st.optic.zoom[0] : 0 };
+    this.reloading = false; this.boltT = 0; this.pumpT = 0; this.fireT = 0; this.adsF = 0;
+  }
   get slot() { return this.slots[this.cur]; }
   get w() { return this.slots[this.cur].st; }
   busy() { return this.swT > 0 || this.reloading || !!this.use || !!this.mantle; }

@@ -151,6 +151,7 @@ h1 span{color:var(--g)}
     <div class="sub">TACTICAL INFILTRATION</div>
     <button class="nav sel" data-tab="play">PLAY</button>
     <button class="nav" data-tab="loadout">LOADOUT</button>
+    <button class="nav" data-tab="training">TRAINING</button>
     <button class="nav" data-tab="settings">SETTINGS</button>
     <button class="nav" data-tab="controls">CONTROLS</button>
     <div id="ver">V2.0<br>SINGLE OPERATOR</div>
@@ -180,6 +181,19 @@ h1 span{color:var(--g)}
         <div class="bars" id="bars"></div></div>
       <div class="grp"><label>SLOT 3 — MELEE</label><div class="opts"><button class="opt sel">Combat knife<small>silent · lethal from behind or on unaware guards</small></button></div></div>
       <div class="grp"><label>EQUIPMENT KIT</label><div class="opts" data-k="kit"></div></div>
+    </div>
+    <div class="tab" id="t-training">
+      <div class="panel" style="margin-bottom:14px"><h3>TRAINING RANGE</h3>
+        <p>A 100 m range for testing weapons without a mission. Uses your current loadout; ammunition and grenades are unlimited.</p>
+        <div class="keys" style="margin-top:10px">
+          <b>Targets</b><span>10 / 25 / 50 / 75 / 100 m, two moving, two live dummies for hit zones</span>
+          <b>Cover lane</b><span>targets behind a steel plate and a chain-link fence — rounds must stop</span>
+          <b>Grenade pit</b><span>sandbagged targets on the right, one protected behind a wall</span>
+          <b>5 / 6</b><span>cycle the primary / secondary weapon</span>
+          <b>7 / 8</b><span>cycle optic / toggle suppressor on the weapon in hand</span>
+          <b>Wheel</b><span>adjust magnification while aiming through a variable scope</span>
+        </div></div>
+      <button class="btn" id="train">ENTER TRAINING RANGE</button>
     </div>
     <div class="tab" id="t-settings">
       <div class="grp"><label>CONTROLS</label>
