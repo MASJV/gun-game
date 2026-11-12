@@ -25,7 +25,7 @@ Open `index.html` in a desktop browser (Chrome, Edge or Firefox). No server is n
 | H / X | Medkit (slow, +65) / stim (fast, +25) |
 | E | Interact, pick up (hold for terminals, sabotage, restraining) |
 | N / L | Night vision / laser sight |
-| F3 | Performance overlay |
+| F3 | Performance overlay: FPS, frame-time graph and percentiles, stutter log, CPU / GPU split, resolution |
 | 5 / 6 / 7 / 8 | Training range only: cycle primary / secondary / optic, toggle suppressor |
 | Esc | Pause |
 
@@ -46,8 +46,9 @@ Open `index.html` in a desktop browser (Chrome, Edge or Firefox). No server is n
   rounds; a round leaves the muzzle, so you cannot shoot past cover only your eyes can see over.
 - **Loadout:** primary (AK-47, M4A1, SR-9 DMR, L96 bolt-action sniper), secondary (pistol, SMG, shotgun), combat knife;
   red dot, holographic, fixed 4x, variable 4–10x, suppressor, foregrip, laser; equipment kits.
-- **Performance:** Low / Medium / High presets, distance-based tree detail, adaptive render scale (Settings),
-  raw mouse input where the browser supports it.
+- **Performance & comfort:** Low / Medium / High presets, distance-based tree and animation detail, GPU-aware adaptive
+  render scale (60 FPS or display-refresh target), raw mouse input, frame-rate-independent movement, and Comfort
+  settings for camera motion (head bob, sprint FOV, shake; 0 % = off) and weapon sway. See `docs/SMOOTHNESS.md`.
 
 ## Develop
 
@@ -65,7 +66,8 @@ npm test
 
 `npm run assets` rebuilds `assets/*.glb` and `dist/assets.js` from the source packs (network needed).
 `npm test` needs Playwright with a Chromium it can launch. `npm run perf` prints triangles and draw calls per map and
-preset (software GL in CI-like environments, so not a real-GPU frame rate); `npm run smoke` runs the real menu flow. Progress notes for contributors: `docs/V2_PROGRESS.md`, `docs/V2_1_PROGRESS.md`, `GAME_PLAN.md`.
+preset (software GL in CI-like environments, so not a real-GPU frame rate); `npm run smoke` runs the real menu flow; `npm run pace` measures simulation frame times, allocation and
+frame-rate independence of movement. Progress notes for contributors: `docs/V2_PROGRESS.md`, `docs/V2_1_PROGRESS.md`, `GAME_PLAN.md`.
 
 ## Credits
 

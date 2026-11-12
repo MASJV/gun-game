@@ -134,7 +134,8 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       P.pos.set(40, 0, 12); P.yaw = 0; P.pitch = 0; place(40, 0, 0); sim(0.5); G.inp.rmb = true; sim(0.5);
       P.pitch = -0.045; sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.2); o.body = 100 - e.hp;
       e.hp = 100; e.set('PATROL'); e.wantCrouch = false; e.waitT = 1e9; e.release(); place(40, 0, 0); calm(); e.stun = 0; sim(0.6);
-      e.ch.refresh(); const h = e.ch.eye(new G.v1.constructor()); P.pitch = Math.atan2(h.y + 0.03 - G.camera.position.y, 12); sim(0.1); G.inp.lmbPressed = true; G.inp.lmb = true; sim(0.03); G.inp.lmb = false; sim(0.1); o.head = e.dead ? 'kill' : 100 - e.hp; G.inp.rmb = false;
+      // aim and fire in the same frame: the guard's idle / flinch animation moves his head
+      sim(0.8); e.ch.refresh(); const h = e.ch.eye(new G.v1.constructor()), c = G.camera.position; P.pitch = Math.atan2(h.y + 0.02 - c.y, Math.hypot(h.x - c.x, h.z - c.z)); P.yaw = Math.atan2(-(h.x - c.x), -(h.z - c.z)); P.ry = P.rp = 0; G.inp.lmbPressed = true; G.inp.lmb = true; G.step(1 / 60); G.inp.lmb = false; sim(0.1); o.head = e.dead ? 'kill' : 100 - e.hp; G.inp.rmb = false;
       return o;
     });
     check('combat: body hit = base damage, head hit = 2.5x', o.body === 36 && (o.head === 'kill' || o.head === 90), o);
@@ -559,6 +560,22 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('pacing: stutters detected and logged; stats and F3 overlay show frame times, CPU split and resolution', o.stutter[0] === 1 && o.stutter[1] === 70 && o.overlay === 'block' && o.overlayOff === 'none' && /p99/.test(o.ovText) && /CPU ms/.test(o.ovText) && /GPU ms/.test(o.ovText) && /RES \d+×\d+/.test(o.ovText) && /STUTTERS/.test(o.ovText), [o.stutter, o.stats, o.ovText.slice(0, 200)]);
     check('input: mouse look is independent of frame time; raw input falls back to plain pointer lock', o.look[0] === o.look[1] && o.look[0] !== 0 && o.lockCalls.join() === 'raw,plain', [o.look, o.lockCalls]);
     check('pacing: no per-frame allocations in Character.update()', !/new THREE\./.test(body) && !/= \{\}|\[\.\.\./.test(body), body.match(/new THREE\.\w+/g));
+  });
+
+  await run('latency', async () => {
+    await start('warehouse', 'tactical', { primary: 'ak' });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, o = {}; const e = solo(0); calm();
+      e.release(); e.pos.set(40, 0, 0); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.set('PATROL'); e.sync(); e.ch.refresh();
+      P.pos.set(40, 0, 12); P.yaw = 1.2; P.pitch = 0; G.inp.rmb = true; for (let i = 0; i < 40; i++) G.step(1 / 60); // aiming well away from the target
+      // in ONE frame: the mouse turns onto the target and the trigger is pulled. The round must go where the view now points.
+      const c = G.camera.position, want = Math.atan2(-(e.pos.x - c.x), -(e.pos.z - c.z)), sens = 0.0022 * G.sens * (Math.tan((P.adsFov() * Math.PI) / 360) / Math.tan((G.fov * Math.PI) / 360));
+      G.inp.mx = -(want - P.yaw) / sens; P.pitch = Math.atan2(1.0 - c.y, 12); P.ry = P.rp = 0;
+      G.inp.lmb = true; G.inp.lmbPressed = true; G.step(1 / 60); G.inp.lmb = false; G.inp.rmb = false;
+      o.hit = 100 - e.hp; o.yawErr = +Math.abs(P.yaw - want).toFixed(4);
+      return o;
+    });
+    check('input latency: a shot fired in the same frame as a mouse flick uses the new view direction', o.hit > 0 && o.yawErr < 0.01, o);
   });
 
   await run('comfort', async () => {

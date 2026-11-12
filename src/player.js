@@ -138,6 +138,24 @@ export class Player {
       }
     }
   }
+  // Place the camera from the current look angles. Called before the weapon logic (so a shot fired this frame
+  // uses this frame's mouse input, not last frame's view) and again at the end of update (recoil, sway, FOV).
+  placeCamera(off, w) {
+    const G = this.g, p = this.pos, sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
+    // Camera comfort: everything below that is not gameplay information is scaled by the CAMERA MOTION setting
+    // (0 = off). The camera never moves sideways with footsteps (a common cause of eye strain); that sway lives
+    // on the weapon only. Explosion shake is a smooth low-frequency wobble, not per-frame random jitter.
+    const cam = G.camera, cmo = G.camMotion ?? 0.5, wsw = G.weaponSway ?? 1, gait = Math.min(1, this.speed / 4.5), t = this.swT2;
+    const bobY = Math.sin(this.bob * 2) * 0.028 * gait * (1 - this.adsF * 0.6), bobX = Math.cos(this.bob) * 0.02 * gait;
+    const sh = this.shake * 0.05 * cmo, shx = sh * (Math.sin(t * 31) + Math.sin(t * 47) * 0.5), shy = sh * (Math.sin(t * 37 + 1) + Math.sin(t * 53) * 0.5);
+    cam.position.set(p.x + this.leanX + shx * cy, p.y + this.eye + bobY * cmo - this.dip * cmo - Math.abs(off) * 0.08 + shy, p.z + this.leanZ - shx * sy);
+    cam.rotation.set(this.pitch + this.rp + (this.scopeY || 0), this.yaw + this.ry + (this.scopeX || 0), -off * 0.3 * cmo);
+    const fov = G.fov + ((w.melee ? G.fov : this.adsFov()) - G.fov) * this.adsF * this.adsF * (3 - 2 * this.adsF) + this.sprintF * 4 * cmo;
+    if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
+    cam.updateMatrixWorld();
+    cam.getWorldDirection(this.fwd); this.eyePos.copy(cam.position);
+    this.cb = bobX * wsw; this.cbY = bobY * wsw; // weapon bob (no array allocation per frame)
+  }
   update(dt) {
     const G = this.g, inp = G.inp, k = inp.k, s = this.slot, w = s.st;
     // look
@@ -178,6 +196,7 @@ export class Player {
     if (this.sinceHit > 5 && this.hp < 20) this.hp = Math.min(20, this.hp + 4 * dt);
     if (this.stimT > 2) this.hp = Math.min(100, this.hp + 2.5 * dt);
     this.blind = Math.max(0, this.blind - dt * (this.blind > 1 ? 1 : 0.55)); this.shake = Math.max(0, this.shake - dt * 2.5);
+    this.placeCamera(off, w); // up-to-date view before anything can fire
     // equipment / weapon state
     if (this.use) {
       const u = this.use; u.t += dt;
@@ -222,20 +241,9 @@ export class Player {
     const mv = this.speed / 4.5;
     if (!w.melee) this.spread = (w.hip * (1 + mv * 0.9 + (this.grounded ? 0 : 2)) * (this.crouch ? 0.75 : 1) * (w.att.laser && this.laserOn ? 0.6 : 1)) * (1 - this.adsF) + w.ads * (1 + mv * 0.6) * this.adsF + this.burst * 0.03;
     const rc = damp(7, dt); this.rp -= this.rp * rc; this.ry -= this.ry * rc; this.kick -= this.kick * damp(14, dt);
-    // camera
-    // Camera comfort: everything below that is not gameplay information is scaled by the CAMERA MOTION setting
-    // (0 = off). The camera never moves sideways with footsteps (a common cause of eye strain); that sway lives
-    // on the weapon only. Explosion shake is a smooth low-frequency wobble, not per-frame random jitter.
-    const cam = G.camera, cmo = G.camMotion ?? 0.5, wsw = G.weaponSway ?? 1, gait = Math.min(1, mv), t = this.swT2;
-    const bobY = Math.sin(this.bob * 2) * 0.028 * gait * (1 - this.adsF * 0.6), bobX = Math.cos(this.bob) * 0.02 * gait;
-    const sh = this.shake * 0.05 * cmo, shx = sh * (Math.sin(t * 31) + Math.sin(t * 47) * 0.5), shy = sh * (Math.sin(t * 37 + 1) + Math.sin(t * 53) * 0.5);
-    cam.position.set(p.x + this.leanX + shx * cy, p.y + this.eye + bobY * cmo - this.dip * cmo - Math.abs(off) * 0.08 + shy, p.z + this.leanZ - shx * sy);
-    cam.rotation.set(this.pitch + this.rp + (this.scopeY || 0), this.yaw + this.ry + (this.scopeX || 0), -off * 0.3 * cmo);
-    const fov = G.fov + ((w.melee ? G.fov : this.adsFov()) - G.fov) * this.adsF * this.adsF * (3 - 2 * this.adsF) + this.sprintF * 4 * cmo;
-    if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
-    cam.updateMatrixWorld();
-    cam.getWorldDirection(this.fwd); this.eyePos.copy(cam.position);
-    this.animate(dt, bobX * wsw, bobY * wsw);
+    // camera (final placement for rendering, including this frame's recoil and sway)
+    this.placeCamera(off, w);
+    this.animate(dt, this.cb, this.cbY);
   }
   shoot() {
     const G = this.g, s = this.slot, w = s.st, cam = G.camera;

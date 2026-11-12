@@ -2,7 +2,7 @@
 // distribution of simulation time per frame, the worst frames with their subsystem breakdown, raycast load,
 // JS allocation rate, and frame-rate (in)dependence of player movement.
 // GPU cost is NOT measured here (software GL) - see tools/perf.cjs for draw-call / triangle counts.
-// Usage: node tools/pace.cjs [label]   -> also writes tools/pace-<label>.json when a label is given
+// Usage: node tools/pace.cjs [label]   -> also writes docs/perf/pace-<label>.json when a label is given
 const path = require('path'), fs = require('fs');
 const { chromium } = require('playwright');
 (async () => {
@@ -60,6 +60,6 @@ const { chromium } = require('playwright');
     return res;
   });
   out.movement = mv; console.log('movement', JSON.stringify(mv));
-  if (process.argv[2]) fs.writeFileSync(path.join(__dirname, `pace-${process.argv[2]}.json`), JSON.stringify(out, null, 1));
+  if (process.argv[2]) fs.writeFileSync(path.join(__dirname, '..', 'docs', 'perf', `pace-${process.argv[2]}.json`), JSON.stringify(out, null, 1));
   await b.close();
 })();
