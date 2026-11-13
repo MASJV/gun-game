@@ -58,7 +58,7 @@
   }
  },
  "stairs": {
-  "maxCamStepPerFrame": 0.053,
+  "maxCamStepPerFrame": 0.054,
   "endY": 1
  },
  "mantle": {

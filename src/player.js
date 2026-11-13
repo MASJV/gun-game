@@ -20,7 +20,7 @@ export class Player {
     this.pos = new THREE.Vector3(spawn.x, 0, spawn.z); this.vel = new THREE.Vector3();
     this.yaw = spawn.yaw; this.pitch = 0; this.eye = 1.62; this.height = 1.8;
     this.hp = 100; this.dead = false; this.grounded = true; this.crouch = false; this.crouchToggle = false;
-    this.speed = 0; this.bob = 0; this.dip = 0; this.sinceHit = 99; this.noSprint = 0; this.sprintF = 0; this.sprinting = false;
+    this.speed = 0; this.bob = 0; this.dip = 0; this.sinceHit = 99; this.noSprint = 0; this.sprintF = 0; this.sprinting = false; this.sprintR = 0;
     this.lean = 0; this.leanX = 0; this.leanZ = 0; this.mantle = null; this.stimT = 0; this.blind = 0; this.shake = 0;
     const ids = [loadout.primary, loadout.secondary, 'knife'];
     this.slots = ids.map((id) => {
@@ -110,9 +110,10 @@ export class Player {
     this.noSprint -= dt;
     const sprint = (k.ShiftLeft || k.ShiftRight) && f > 0.5 && !this.crouch && this.noSprint <= 0 && !inp.rmb && this.grounded && !this.use;
     this.sprinting = sprint;
+    this.sprintR = clamp((this.sprintR || 0) + (sprint ? dt / 0.35 : -dt / 0.2), 0, 1); // sprint speed builds up / bleeds off instead of jumping
     // direction-dependent top speed: full forward, slightly slower strafing, noticeably slower backpedal
     const dirMul = sprint ? 1 : f >= 0 ? f * f + 0.92 * sd * sd : 0.78 * f * f + 0.92 * sd * sd;
-    const sp = (this.crouch ? 2.3 : sprint ? 6.9 : 4.5) * dirMul * w.move * (1 - 0.42 * this.adsF) * (this.use && this.use.type === 'med' ? 0.55 : 1) * (this.stimT > 0 ? 1.12 : 1) * (1 - Math.abs(this.lean) * 0.5);
+    const sp = (this.crouch ? 2.3 : 4.5 + 2.4 * ease(this.sprintR)) * dirMul * w.move * (1 - 0.42 * this.adsF) * (this.use && this.use.type === 'med' ? 0.55 : 1) * (this.stimT > 0 ? 1.12 : 1) * (1 - Math.abs(this.lean) * 0.5);
     const wx = (-sy * f + cy * sd) * sp, wz = (-cy * f - sy * sd) * sp;
     const vx0 = this.vel.x, vz0 = this.vel.z;
     // Velocity approaches the wanted velocity with acceleration k*|dv| + c (solved exactly per step):
@@ -200,7 +201,7 @@ export class Player {
     // aim state first, so this frame's sensitivity matches the field of view this frame displays
     const ads = inp.rmb && !this.sprinting && this.swT <= 0 && !this.reloading && !this.use && !w.melee && !this.mantle;
     this.adsF = clamp(this.adsF + ((ads ? 1 : -1) * dt) / (w.adsT || 0.15), 0, 1);
-    if (s.zoom) s.zoomV += (s.zoom - s.zoomV) * damp(18, dt); // wheel steps glide instead of snapping
+    if (s.zoom) s.zoomV *= Math.pow(s.zoom / s.zoomV, damp(18, dt)); // wheel steps glide (in log-magnification, so every step feels the same size)
     // Look: raw counts -> angle, never smoothed and never scaled by dt. Sensitivity scales with the tangent of the
     // displayed half-FOV (a pixel moves the same on screen at any zoom), times the player's ADS / scope multiplier.
     const e = w.melee ? 0 : ease(this.adsF), ratio = Math.tan((this.aimFov() * Math.PI) / 360) / Math.tan((G.fov * Math.PI) / 360);
