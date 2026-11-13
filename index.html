@@ -46,7 +46,7 @@ h1 span{color:var(--g)}
 .row input{flex:1;accent-color:var(--g)}.row output{width:44px;text-align:right;color:#fff}
 .bars{display:grid;grid-template-columns:70px 1fr;gap:4px 10px;font-size:10px;letter-spacing:.14em;color:#7d8c90;margin-top:8px}
 .bars i{display:block;height:5px;background:rgba(255,255,255,.1);align-self:center}.bars i b{display:block;height:100%;background:var(--g)}
-.box{position:relative;width:min(460px,92%);text-align:center}
+.box{position:relative;width:min(460px,92%);text-align:center;max-height:96vh;overflow-y:auto} /* small screens: the results box scrolls instead of hiding its buttons */
 .box h2{font-size:38px;letter-spacing:.24em;margin-bottom:6px}
 .box .panel{text-align:left;margin:16px 0}
 .stats{display:grid;grid-template-columns:1fr auto;gap:5px 20px}.stats b{color:#fff}

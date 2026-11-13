@@ -604,7 +604,7 @@ let ovT = 0, inFirst = 0;
 // a failure inside the frame loop stops the mission and says so (once), instead of leaving a frozen / black screen
 function loopFailed(kind, e) {
   if (G.state === 'playing' || G.state === 'brief') { G.state = 'error'; if (document.pointerLockElement) document.exitPointerLock(); }
-  G.loopErrors = (G.loopErrors || 0) + 1;
+  G.loopErrors = (G.loopErrors || 0) + 1; G.lastError = e && e.stack ? String(e.stack).slice(0, 1200) : String(e);
   if (G.loopErrors === 1 || !$('fatal').classList.contains('on')) { fatal(kind, (e && e.message ? e.message : String(e)) + ' — the mission was stopped. Return to the menu to continue.', true); setTimeout(() => { throw e; }); }
 }
 function frame(now) {

@@ -5,6 +5,7 @@
 const path = require('path'), { spawn } = require('child_process'), { chromium } = require('playwright');
 const ROOT = path.resolve(__dirname, '..'), PORT = 18000 + Math.floor(Math.random() * 1000), URL = `http://127.0.0.1:${PORT}/?test`;
 const only = process.argv[2] || '';
+let PAGES = []; const loopErrs = async () => { const out = []; for (const p of PAGES) { try { const e = await p.evaluate(() => window.__SP && window.__SP.lastError); if (e) out.push(p.name + ': ' + e); } catch (x) { /* closed */ } } return out; };
 const results = []; const check = (name, ok, info) => { results.push({ name, ok: !!ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${info !== undefined ? '  — ' + (typeof info === 'string' ? info : JSON.stringify(info)) : ''}`); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let server = null;
@@ -21,7 +22,7 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
 (async () => {
   await startServer();
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-  const errs = [];
+  const errs = (global.__errs = []);
   const client = async (name) => {
     const ctx = await b.newContext({ viewport: { width: 480, height: 270 } }); // own storage, own connection
     await ctx.addInitScript(() => { try { localStorage.setItem('sp2_settings', JSON.stringify({ quality: 'low', adaptive: false })); } catch (e) { /* ignore */ } });
@@ -33,7 +34,7 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
       window.key = (c, d) => { G.inp.k[c] = d; };
       window.until = (fn, ms = 15000) => new Promise((res) => { const t0 = performance.now(); const tick = () => { let v; try { v = fn(); } catch (e) { v = false; } if (v || performance.now() - t0 > ms) res(v); else setTimeout(tick, 30); }; tick(); });
     });
-    p.name = name; p.ctx = ctx; return p;
+    p.name = name; p.ctx = ctx; PAGES.push(p); return p;
   };
   const ui = async (p, fn) => p.evaluate(fn);
   // --------------------------------------------------------------- lobby: create, join, settings, loadouts, ready, start
@@ -153,10 +154,113 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
     await until(() => e.dead, 8000); await until(() => G.gren.list.length === 0, 4000);
     await until(() => G.mp.lastBoom, 6000); return { inv: inv0 - P.inv.frag, seen, boom: G.mp.lastBoom, dead: e.dead, left: G.gren.list.length };
   }, nadeTarget);
+  console.log('host-fatal', await A.evaluate(() => document.getElementById('fatal').textContent), JSON.stringify(errs.slice(0, 3)));
   const nadeHost = await A.evaluate((i) => ({ dead: window.__SP.enemies[i].dead, hp: Math.round(window.__SP.enemies[i].hp), boom: window.__SP.mp.lastBoom, left: window.__SP.gren.list.length }), nadeTarget);
   check('grenade: the client throws a frag — the host simulates it, it explodes at the same spot on both screens, the guard takes blast damage (same alive/dead state everywhere), no copies left', nade.inv === 1 && nade.seen >= 1 && nade.left === 0 && nadeHost.left === 0 && nadeHost.hp < 100 && nade.dead === nadeHost.dead && nade.boom && nadeHost.boom && Math.hypot(nade.boom[0] - nadeHost.boom[0], nade.boom[2] - nadeHost.boom[2]) < 0.05, { client: nade, host: nadeHost });
 
+  // --------------------------------------------------------------- shared objectives, extraction, synchronized results
+  await A.evaluate(() => { window.__SP.enemies.forEach((e) => { if (!e.dead) { e.percT = 1e9; e.los = false; e.detect = 0; e.waitT = 1e9; } }); }); // keep the guards out of the paperwork
+  const obj = await B.evaluate(async () => {
+    const G = window.__SP, P = G.player, Mi = G.mission, s = Mi.stage, it = Mi.items.find((x) => x.stage === Mi.i && !x.taken);
+    const a = s.anchors[it.k].stand; P.pos.set(a[0], G.world.nav.height(a[0], a[1]), a[1]); P.vel.set(0, 0, 0); P.yaw = Math.atan2(-(it.pos[0] - P.pos.x), -(it.pos[2] - P.pos.z));
+    await new Promise((r) => setTimeout(r, 400)); const prompt = document.getElementById('prompt').textContent;
+    key('KeyE', true); window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' })); await until(() => Mi.complete, (s.hold || 0) * 1000 + 6000); key('KeyE', false);
+    return { kind: s.kind, prompt, complete: Mi.complete, i: Mi.i, taken: Mi.items.map((x) => x.taken) };
+  });
+  await A.waitForFunction(() => window.__SP.mission.complete, null, { timeout: 8000 }).catch(() => {});
+  const objA = await A.evaluate(() => ({ complete: window.__SP.mission.complete, i: window.__SP.mission.i, taken: window.__SP.mission.items.map((x) => x.taken), lines: window.__SP.mission.lines().map((l) => l.state).join(',') }));
+  const linesB = await B.evaluate(() => window.__SP.mission.lines().map((l) => l.state).join(','));
+  check('objective: the client completes the objective — the host validates it and both screens show the same mission progress', obj.complete && objA.complete && JSON.stringify(obj.taken) === JSON.stringify(objA.taken) && objA.lines === linesB && /Hold|Take/.test(obj.prompt), { client: obj, host: objA, linesB });
+  // extraction: only when every standing operator is at the extraction point
+  const exit = await A.evaluate(() => window.__SP.mission.def.exit.pos);
+  await A.evaluate((ex) => { const P = window.__SP.player; P.pos.set(ex[0], 0, ex[2]); P.vel.set(0, 0, 0); }, exit);
+  await wait(800);
+  const waitingFor = await A.evaluate(() => [window.__SP.state, document.getElementById('prompt').textContent]);
+  await B.evaluate((ex) => { const P = window.__SP.player; P.pos.set(ex[0] + 1, 0, ex[2]); P.vel.set(0, 0, 0); }, exit);
+  await Promise.all([A, B].map((p) => p.waitForFunction(() => window.__SP.state === 'won', null, { timeout: 15000 }).catch(() => {})));
+  const res = await Promise.all([A, B].map((p) => p.evaluate(() => ({ state: window.__SP.state, title: document.getElementById('endt').textContent, team: document.querySelector('#endstats .team') ? document.querySelector('#endstats .team').textContent : '', btn: document.getElementById('emenu').textContent, data: window.__SP.coopResult && JSON.stringify(window.__SP.coopResult.players) }))));
+  check('extraction: one operator at the exit is not enough; when both are there the mission ends as a win on both screens', waitingFor[0] === 'playing' && /1 \/ 2/.test(waitingFor[1]) && res.every((r) => r.state === 'won' && r.title === 'MISSION COMPLETE'), { waitingFor, states: res.map((r) => r.state) });
+  check('results: both screens show the same team results (per-operator kills, accuracy, status) and offer RETURN TO LOBBY', res[0].data && res[0].data === res[1].data && /Bravo/.test(res[0].team) && /Alpha/.test(res[1].team) && res.every((r) => r.btn === 'RETURN TO LOBBY'), res.map((r) => r.data));
+  // back to the lobby and a second mission with the same party
+  const vis = await Promise.all([A, B].map((p) => p.evaluate(() => { const e = document.getElementById('emenu'), r = e.getBoundingClientRect(), top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return { endOn: document.getElementById('end').classList.contains('on'), rect: [r.x, r.y, r.width, r.height].map(Math.round), top: top && (top.id || top.className), state: window.__SP.state, ov: [...document.querySelectorAll('.ov.on')].map((o) => o.id) }; })));
+  console.log('end-screen', JSON.stringify(vis));
+  await Promise.all([A, B].map((p) => p.click('#emenu', { timeout: 8000 })));
+  await Promise.all([A, B].map((p) => p.waitForFunction(() => window.__SP.state === 'menu' && document.getElementById('mplobby').style.display === 'block' && !document.getElementById('mpready').disabled, null, { timeout: 15000 }).catch(() => {})));
+  const lobbyBack = await Promise.all([A, B].map((p) => p.evaluate(() => [window.__SP.state, document.getElementById('t-mp').classList.contains('on'), document.querySelectorAll('#mpplayers .mpp').length, !!window.__SP.mp])));
+  await A.selectOption('#mps_mission', 'rescue'); await B.waitForFunction(() => document.getElementById('mps_mission').value === 'rescue', null, { timeout: 8000 });
+  await B.click('#mpready'); await A.waitForFunction(() => !document.getElementById('mpstart').disabled, null, { timeout: 10000 }); await A.click('#mpstart');
+  await Promise.all([A, B].map((p) => p.waitForFunction(() => window.__SP.state === 'playing' && window.__SP.mp && window.__SP.mp.phase === 'live', null, { timeout: 120000 })));
+  const m2 = await Promise.all([A, B].map((p) => p.evaluate(() => [window.__SP.mission.def.type, window.__SP.mission.def.seed, window.__SP.mp.players.size, !!window.__SP.mission.civ])));
+  check('lobby again: both return to the party lobby; a second mission (hostage rescue) starts for both with a new seed', lobbyBack.every((l) => l[0] === 'menu' && l[1] && l[2] === 2 && !l[3]) && m2[0][0] === 'rescue' && m2[0][1] === m2[1][1] && m2[0][1] !== same[0].seed && m2.every((m) => m[2] === 1 && m[3]), { lobbyBack, m2 });
+  // a client drops mid-mission: the host keeps playing, the teammate is marked and ignored by extraction
+  await B.ctx.close();
+  await A.waitForFunction(() => { const r = [...window.__SP.mp.players.values()][0]; return r && !r.connected; }, null, { timeout: 10000 }).catch(() => {});
+  await wait(500);
+  const dropped = await A.evaluate(() => { const r = [...window.__SP.mp.players.values()][0]; return { connected: r.connected, state: window.__SP.state, team: document.getElementById('mphud').textContent, targets: window.__SP.mp.standing().length }; });
+  check('disconnect: when a client’s browser closes, the host keeps playing, shows LINK LOST and the guards stop targeting the missing operator', !dropped.connected && dropped.state === 'playing' && /LINK LOST/.test(dropped.team) && dropped.targets === 1, dropped);
+  await A.evaluate(() => { document.getElementById('brback').click(); }); // leave party from the mission
+  await A.waitForFunction(() => window.__SP.state === 'menu', null, { timeout: 10000 }).catch(() => {});
+  await A.ctx.close();
+
+  // --------------------------------------------------------------- four operators
+  const H = await client('H'), C = [await client('C1'), await client('C2'), await client('C3')];
+  await H.click('[data-tab="mp"]'); await H.fill('#mpname', 'Hotel'); await H.fill('#mpaddr', `127.0.0.1:${PORT}`); await H.click('#mpcreate');
+  await H.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.getElementById('mpcodev').textContent), null, { timeout: 15000 });
+  const code4 = await H.evaluate(() => document.getElementById('mpcodev').textContent);
+  await H.selectOption('#mps_map', 'forest'); await H.selectOption('#mps_mission', 'intel'); await H.selectOption('#mps_length', 'quick');
+  for (const [k, c] of C.entries()) { await c.click('[data-tab="mp"]'); await c.fill('#mpname', 'Charlie' + (k + 1)); await c.fill('#mpaddr', `127.0.0.1:${PORT}`); await c.fill('#mpcode', code4); await c.click('#mpjoin'); await c.waitForFunction(() => document.getElementById('mplobby').style.display === 'block', null, { timeout: 15000 }); }
+  // a fifth player is refused
+  const E5 = await client('E5'); await E5.click('[data-tab="mp"]'); await E5.fill('#mpname', 'Echo'); await E5.fill('#mpaddr', `127.0.0.1:${PORT}`); await E5.fill('#mpcode', code4); await E5.click('#mpjoin');
+  await E5.waitForFunction(() => /full/i.test(document.getElementById('mperr').textContent), null, { timeout: 10000 }).catch(() => {});
+  const full = await E5.evaluate(() => document.getElementById('mperr').textContent); await E5.ctx.close();
+  for (const c of C) await c.click('#mpready');
+  await H.waitForFunction(() => !document.getElementById('mpstart').disabled, null, { timeout: 15000 }); await H.click('#mpstart');
+  const all = [H, ...C];
+  await Promise.all(all.map((p) => p.waitForFunction(() => window.__SP.state === 'playing' && window.__SP.mp && window.__SP.mp.phase === 'live', null, { timeout: 180000 })));
+  await wait(1500);
+  const four = await Promise.all(all.map((p) => p.evaluate(() => ({ rps: window.__SP.mp.players.size, visible: [...window.__SP.mp.players.values()].filter((r) => r.ch.root.visible && r.buf.length).length, seed: window.__SP.mission.def.seed, enemies: window.__SP.enemies.length }))));
+  check('four players: a fifth is refused (party full); all four start the same mission and each sees the other three', /full/i.test(full) && four.every((f) => f.rps === 3 && f.visible === 3 && f.seed === four[0].seed && f.enemies === four[0].enemies), { full, four });
+  // every client fires once; everyone else sees and hears it (the shooter's tracer and muzzle flash)
+  await H.evaluate(() => { window.__SP.mp.trustMoves = true; window.__SP.enemies.forEach((e) => { e.percT = 1e9; e.los = false; e.detect = 0; e.waitT = 1e9; }); });
+  for (const c of C) await c.evaluate(() => { const G = window.__SP; G.inp.lmb = true; G.inp.lmbPressed = true; setTimeout(() => { G.inp.lmb = false; }, 80); });
+  await wait(600);
+  const fireSeen = await H.evaluate(() => [...window.__SP.mp.scores.entries()].filter(([id]) => id !== window.__SP.mp.id).map(([, s]) => s.shots));
+  check('four players: shots from all three clients reach the host and are accepted', fireSeen.length === 3 && fireSeen.every((n) => n >= 1), fireSeen);
+  // C2 completes the objective, everyone extracts, everyone sees the same result
+  const it = await C[1].evaluate(async () => {
+    const G = window.__SP, P = G.player, Mi = G.mission, s = Mi.stage, it = Mi.items.find((x) => x.stage === Mi.i && !x.taken), a = s.anchors[it.k].stand;
+    P.pos.set(a[0], G.world.nav.height(a[0], a[1]), a[1]); P.vel.set(0, 0, 0); await new Promise((r) => setTimeout(r, 400));
+    key('KeyE', true); window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' })); await until(() => Mi.complete, (s.hold || 0) * 1000 + 6000); key('KeyE', false); return Mi.complete;
+  });
+  const ex4 = await H.evaluate(() => window.__SP.mission.def.exit.pos);
+  for (const [k, p] of all.entries()) await p.evaluate(([ex, k]) => { const P = window.__SP.player; P.pos.set(ex[0] + (k % 2) * 1.2, 0, ex[2] + (k > 1 ? 1.2 : 0)); P.vel.set(0, 0, 0); }, [ex4, k]);
+  await Promise.all(all.map((p) => p.waitForFunction(() => window.__SP.state === 'won', null, { timeout: 15000 }).catch(() => {})));
+  const r4 = await Promise.all(all.map((p) => p.evaluate(() => [window.__SP.state, window.__SP.coopResult && JSON.stringify(window.__SP.coopResult.players)])));
+  check('four players: a client completes the objective, all four extract, all four see the identical result', it && r4.every((r) => r[0] === 'won' && r[1] === r4[0][1]), r4.map((r) => r[0]));
+  // the host closes the game: every client is told the party ended and lands back in the menu
+  await all[0].evaluate(() => document.getElementById('emenu').click());
+  for (const c of C) await c.evaluate(() => document.getElementById('emenu').click());
+  await H.ctx.close();
+  await Promise.all(C.map((c) => c.waitForFunction(() => window.__SP.state === 'menu' && /ended|left|disconnected/i.test(document.getElementById('mperr').textContent), null, { timeout: 15000 }).catch(() => {})));
+  const ended = await Promise.all(C.map((c) => c.evaluate(() => [window.__SP.state, document.getElementById('mperr').textContent, document.getElementById('mpconn').style.display])));
+  check('host leaves: every client is told the party has ended and is back at the connect screen', ended.every((e) => e[0] === 'menu' && /ended|left|disconnected/i.test(e[1]) && e[2] === 'block'), ended);
+
+  // --------------------------------------------------------------- server restart
+  const R = C[0];
+  await R.evaluate(() => { document.getElementById('content').scrollTop = 0; }); // the tiny test viewport left the menu scrolled down
+  await R.fill('#mpname', 'Romeo'); await R.click('#mpcreate'); await R.waitForFunction(() => document.getElementById('mplobby').style.display === 'block', null, { timeout: 10000 });
+  await stopServer();
+  await R.waitForFunction(() => /RECONNECTING/.test(document.getElementById('mplink_status').textContent) && document.getElementById('mplink_status').style.display === 'block', null, { timeout: 10000 }).catch(() => {});
+  const recon = await R.evaluate(() => document.getElementById('mplink_status').style.display);
+  await startServer();
+  await R.waitForFunction(() => document.getElementById('mpconn').style.display === 'block', null, { timeout: 30000 }).catch(() => {});
+  const after = await R.evaluate(() => [document.getElementById('mpconn').style.display, document.getElementById('mperr').textContent]);
+  await R.click('#mpcreate'); await R.waitForFunction(() => document.getElementById('mplobby').style.display === 'block', null, { timeout: 10000 }).catch(() => {});
+  const fresh = await R.evaluate(() => [document.getElementById('mplobby').style.display, document.getElementById('mpcodev').textContent]);
+  check('server restart: the client shows that it is reconnecting, then that the party is gone (the new server has no memory of it), and can create a new party', recon === 'block' && after[0] === 'block' && /no longer exists|Lost the connection/i.test(after[1]) && fresh[0] === 'block' && /^[A-Z0-9]{5}$/.test(fresh[1]), { recon, after, fresh });
+
+  const le = await loopErrs(); if (le.length) { console.log('LOOP ERRORS', le); errs.push(...le); }
   console.log('\nerrors:', errs.length ? errs.slice(0, 6) : 'none');
   const failed = results.filter((r) => !r.ok).length; console.log(`\n${results.length - failed}/${results.length} multiplayer checks passed`);
   await b.close(); await stopServer(); process.exit(failed || errs.length ? 1 : 0);
-})().catch(async (e) => { console.error(e); await stopServer(); process.exit(2); });
+})().catch(async (e) => { console.error(e); console.log('page errors:', JSON.stringify(global.__errs || [])); await stopServer(); process.exit(2); });

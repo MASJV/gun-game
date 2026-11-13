@@ -174,7 +174,7 @@ export function initLobby(G, H) {
       case 'hello': L.lan = m.lan || []; L.port = m.port || L.port; return;
       case 'joined': L.id = m.id; L.code = m.code; L.leader = m.leader; net.token = m.token; if (m.lan) L.lan = m.lan; if (m.port) L.port = m.port; view(); msg(m.resumed ? 'Reconnected' : L.leader ? 'Party created — share the code or the link below' : 'Joined the party'); return;
       case 'lobby': L.lobby = m; render(); return;
-      case 'err': msg(m.msg || m.code, true); return;
+      case 'err': if (m.code === 'GONE') { const t = m.msg || 'The party no longer exists'; if (G.mp) G.mp.abort(t); L.ended(t); return; } msg(m.msg || m.code, true); return;
       case 'closed': { const text = m.msg || 'The party has ended'; if (G.mp) G.mp.abort(text); L.ended(text); return; }
       case 'start': return H.startCoop(m, L);
       case 'joinedp': H.toast(`${m.name} JOINED THE PARTY`, 2.5); return;
