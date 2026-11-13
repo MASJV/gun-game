@@ -22,7 +22,21 @@ const canvas = $('c');
 // Read before the context exists, so changing it needs a reload.
 let LOWLAT = false; try { LOWLAT = !!JSON.parse(localStorage.getItem('sp2_settings') || '{}').lowlat; } catch (e) { /* default */ }
 const GLCTX = LOWLAT ? canvas.getContext('webgl2', { antialias: true, alpha: false, desynchronized: true, powerPreference: 'high-performance', stencil: true, depth: true }) : null;
-const renderer = new THREE.WebGLRenderer({ canvas, context: GLCTX || undefined, antialias: true, powerPreference: 'high-performance' });
+// Visible failure report: a render / simulation failure must never look like a (black) running game.
+const fatal = (title, detail, canMenu) => {
+  const el = $('fatal'); if (!el) return; el.querySelector('b').textContent = title; el.querySelector('p').textContent = detail || '';
+  $('fatalmenu').style.display = canMenu ? '' : 'none'; el.classList.add('on');
+};
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, context: GLCTX || undefined, antialias: true, powerPreference: 'high-performance' }); }
+catch (e) { fatal('WEBGL IS NOT AVAILABLE', 'The browser could not create a WebGL context (' + e.message + '). Enable hardware acceleration or try another browser.', false); throw e; }
+renderer.debug.onShaderError = (gl, program, vs, fs) => {
+  const log = (gl.getProgramInfoLog(program) || '') + ' ' + (gl.getShaderInfoLog(fs) || '') + ' ' + (gl.getShaderInfoLog(vs) || '');
+  console.error('SHADER ERROR', log.trim().slice(0, 800)); G.renderErrors = (G.renderErrors || 0) + 1;
+  fatal('GRAPHICS ERROR', 'A shader failed to compile on this GPU: ' + log.trim().slice(0, 220) + ' — try the Low graphics preset.', true);
+};
+canvas.addEventListener('webglcontextlost', (ev) => { ev.preventDefault(); G.contextLost = true; fatal('GRAPHICS DEVICE LOST', 'The GPU reset the WebGL context (driver reset or out of video memory). Restoring… If this message stays, reload the page or lower the graphics preset.', true); });
+canvas.addEventListener('webglcontextrestored', () => { G.contextLost = false; $('fatal').classList.remove('on'); });
 renderer.shadowMap.type = THREE.PCFShadowMap; renderer.autoClear = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.5;
 const ENV = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
@@ -36,6 +50,8 @@ const G = {
 };
 G.camera.rotation.order = 'YXZ';
 window.__SP = G; window.__rayBoxes = rayBoxes; window.__SPrenderer = renderer;
+G.renderer = renderer; // read by tests and tools
+G.KITS_DEF = KITS; G.WEAPONS = WEAPONS; G.WEAPONS_DEF = Object.keys(WEAPONS).map((id) => ({ id, slot: WEAPONS[id].slot, melee: !!WEAPONS[id].melee, optics: WEAPONS[id].optics || ['iron'], muzzle: !!WEAPONS[id].muzzle, grip: !!WEAPONS[id].grip, laser: !!WEAPONS[id].laser }));
 G.debugRender = () => { // used by the perf probe in tools/: one synchronous frame, GPU flushed
   const t0 = performance.now(), gl = renderer.getContext(); renderer.info.autoReset = false; renderer.info.reset();
   renderer.setViewport(0, 0, innerWidth, innerHeight); renderer.clear(); renderer.render(G.scene, G.camera); renderer.clearDepth(); renderer.render(G.wscene, G.wcam);
@@ -296,9 +312,24 @@ function startMission() {
 }
 function beginMission() { if (G.state !== 'brief') return; show(null); G.state = 'playing'; last = performance.now(); toast(MISSIONS[G.mission.def.type].name + ' — ' + G.mission.def.stages[0].title.toUpperCase(), 4); lock(); }
 // Raw (unaccelerated) mouse input where the browser supports it; plain pointer lock otherwise.
+// Look gate: while the pointer is being captured, Chromium delivers the cursor's warp to screen centre as one big
+// mousemove (seen: -480, -356 counts). It arrives with pointerLockElement already set but BEFORE 'pointerlockchange',
+// so it spun the fresh operator about 60 deg and pitched him 45 deg into the black night sky after DEPLOY / RESUME.
+// Mouse look is ignored from the lock request until 80 ms after the lock is confirmed.
+// Judged by the event's creation time (ev.timeStamp), not when a slow frame finally dispatches it. The first event
+// after a lock is also dropped when it is an implausible single jump (> 200 counts): Chrome can attach the warp to the
+// user's first real movement, whenever that comes.
+const lookGate = (G.lookGate = { pending: false, lockedAt: -1e9, first: false, dropped: 0,
+  accept(ev) {
+    const t = ev.timeStamp || performance.now();
+    if (this.pending || t < this.lockedAt + 80) { this.dropped++; return false; }
+    if (this.first) { this.first = false; if (Math.abs(ev.movementX) + Math.abs(ev.movementY) > 200) { this.dropped++; return false; } }
+    return true;
+  } });
 function lock() {
+  lookGate.pending = true; G.inp.mx = G.inp.my = 0;
   const fail = () => { $('phint').textContent = 'CLICK RESUME AGAIN TO RE-CAPTURE THE MOUSE'; };
-  const plain = () => { try { const q = canvas.requestPointerLock(); if (q && q.catch) q.catch(fail); } catch (e) { fail(); } };
+  const plain = () => { lookGate.pending = true; try { const q = canvas.requestPointerLock(); if (q && q.catch) q.catch(fail); } catch (e) { fail(); } };
   if (!G.rawInput) return plain();
   try { const p = canvas.requestPointerLock({ unadjustedMovement: true }); if (p && p.catch) p.catch(plain); } catch (e) { plain(); }
 }
@@ -498,25 +529,35 @@ G.step = step;
 let last = performance.now();
 renderer.info.autoReset = false; // counted per frame (world + view model), reset below
 let ovT = 0, inFirst = 0;
+// a failure inside the frame loop stops the mission and says so (once), instead of leaving a frozen / black screen
+function loopFailed(kind, e) {
+  if (G.state === 'playing' || G.state === 'brief') { G.state = 'error'; if (document.pointerLockElement) document.exitPointerLock(); }
+  G.loopErrors = (G.loopErrors || 0) + 1;
+  if (G.loopErrors === 1 || !$('fatal').classList.contains('on')) { fatal(kind, (e && e.message ? e.message : String(e)) + ' — the mission was stopped. Return to the menu to continue.', true); setTimeout(() => { throw e; }); }
+}
 function frame(now) {
   requestAnimationFrame(frame);
+  G.frames = (G.frames || 0) + 1; // real presented frames (end-to-end tests check the loop is alive)
   const P = G.pacing, ms = now - last, dt = Math.min(0.05, ms / 1000); last = now;
   const f0 = performance.now();
   P.feed(ms); P.gpuPoll();
   if (G.state === 'playing') {
     if (inFirst) { const age = f0 - inFirst; if (age >= 0 && age < 500) { P.inputAge = P.inputT && f0 - P.inputT < 2000 ? P.inputAge + (age - P.inputAge) * 0.1 : age; P.inputT = f0; } inFirst = 0; } // oldest unconsumed mouse event -> this frame
-    step(dt); // mouse look is applied per event delta, independent of dt
+    try { step(dt); } // mouse look is applied per event delta, independent of dt
+    catch (e) { return loopFailed('SIMULATION ERROR', e); }
   }
   const f1 = performance.now();
   renderer.info.reset();
-  if (G.state === 'menu') menuRender(dt);
-  else if (G.scene) {
-    const q = P.gpuBegin();
-    renderer.setViewport(0, 0, innerWidth, innerHeight);
-    renderer.clear(); renderer.render(G.scene, G.camera);
-    renderer.clearDepth(); renderer.render(G.wscene, G.wcam);
-    P.gpuEnd(q);
-  }
+  try {
+    if (G.state === 'menu') menuRender(dt);
+    else if (G.scene && !G.contextLost) {
+      const q = P.gpuBegin();
+      renderer.setViewport(0, 0, innerWidth, innerHeight);
+      renderer.clear(); renderer.render(G.scene, G.camera);
+      renderer.clearDepth(); renderer.render(G.wscene, G.wcam);
+      P.gpuEnd(q);
+    }
+  } catch (e) { return loopFailed('RENDER ERROR', e); }
   const f2 = performance.now();
   P.simMs = f1 - f0; P.renderMs = f2 - f1; P.cpuMs += (f2 - f0 - P.cpuMs) * 0.1;
   if (G.overlay && (ovT -= ms) <= 0) { ovT = 250; drawOverlay(); }
@@ -572,10 +613,8 @@ addEventListener('keydown', (ev) => {
 });
 addEventListener('keyup', (ev) => { G.inp.k[ev.code] = false; });
 addEventListener('blur', () => { G.inp.k = {}; G.inp.lmb = G.inp.rmb = false; });
-let lockedAt = 0;
 addEventListener('mousemove', (ev) => { if (G.state === 'playing' && (document.pointerLockElement === canvas || TEST)) {
-  // browsers can report one bogus jump right after the pointer is captured
-  if (!TEST && performance.now() - lockedAt < 60) return;
+  if (!TEST && !lookGate.accept(ev)) return;
   if (!inFirst) inFirst = ev.timeStamp || performance.now(); G.inp.mx += ev.movementX; G.inp.my += ev.movementY; } });
 addEventListener('mousedown', (ev) => {
   if (G.state !== 'playing') return;
@@ -588,8 +627,10 @@ addEventListener('wheel', (ev) => { // scoped: adjust magnification; otherwise c
   if (!G.player.zoomStep(ev.deltaY < 0 ? 1 : -1)) G.player.cycleThrow();
 }, { passive: false });
 addEventListener('contextmenu', (ev) => ev.preventDefault());
-document.addEventListener('pointerlockchange', () => {
-  if (document.pointerLockElement === canvas) { lockedAt = performance.now(); G.inp.mx = G.inp.my = 0; if (G.state === 'paused') { G.state = 'playing'; show(null); last = performance.now(); } }
+document.addEventListener('pointerlockerror', () => { lookGate.pending = false; });
+document.addEventListener('pointerlockchange', (ev) => {
+  lookGate.pending = false;
+  if (document.pointerLockElement === canvas) { lookGate.lockedAt = ev.timeStamp || performance.now(); lookGate.first = true; G.inp.mx = G.inp.my = 0; if (G.state === 'paused') { G.state = 'playing'; show(null); last = performance.now(); } }
   else if (G.state === 'playing' && !TEST) pause();
 });
 
@@ -680,6 +721,7 @@ document.querySelectorAll('.opts[data-k="quality"] .opt').forEach((o) => o.class
 const begin = () => { G.audio.init(); if (G.audio.master) G.audio.master.gain.value = G.vol; startMission(); };
 $('start').onclick = () => { G.sel.mode = 'mission'; begin(); }; $('train').onclick = () => { G.sel.mode = 'range'; begin(); }; $('again').onclick = begin; $('prestart').onclick = begin;
 $('brgo').onclick = beginMission; $('brback').onclick = toMenu;
+$('fatalmenu').onclick = () => { $('fatal').classList.remove('on'); G.loopErrors = 0; if (G.state !== 'menu') toMenu(); };
 $('resume').onclick = resume; $('pmenu').onclick = toMenu; $('emenu').onclick = toMenu;
 // night-vision grain
 { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), im = g.createImageData(128, 128);

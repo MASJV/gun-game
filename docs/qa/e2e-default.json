@@ -1,0 +1,1891 @@
+{
+ "profile": "default",
+ "pass": 84,
+ "fail": 0,
+ "totals": {
+  "combos": 28,
+  "completed": 28,
+  "assists": 61
+ },
+ "errors": [],
+ "results": [
+  {
+   "name": "warehouse/intel/quick/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 87
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 4,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 209,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.29
+   }
+  },
+  {
+   "name": "warehouse/intel/quick/7: objective sequence [retrieve] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 10,
+    "moved": 3.59,
+    "prompts": [
+     "ETake intelligence package"
+    ],
+    "log": [
+     "retrieve:done"
+    ],
+    "reached": [
+     true,
+     false
+    ],
+    "assists": 1,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "warehouse/intel/quick/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 52
+   }
+  },
+  {
+   "name": "warehouse/intel/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 91
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 12,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 211,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/intel/standard/7: objective sequence [keycard → hack] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.67,
+    "prompts": [
+     "ETake access credential",
+     "EHold to access secure terminal"
+    ],
+    "log": [
+     "keycard:done",
+     "hack:done"
+    ],
+    "reached": [
+     true,
+     true,
+     false
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "warehouse/intel/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 51
+   }
+  },
+  {
+   "name": "warehouse/intel/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 91
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 19,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 213,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 0.93
+   }
+  },
+  {
+   "name": "warehouse/intel/extended/7: objective sequence [sab:security → keycard → hack] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable security control",
+     "ETake access credential",
+     "EHold to access secure terminal"
+    ],
+    "log": [
+     "sab:security:done",
+     "keycard:done",
+     "hack:done"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "assists": 3,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "warehouse/intel/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 53
+   }
+  },
+  {
+   "name": "warehouse/capture/quick/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 89
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 22,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 209,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/capture/quick/7: objective sequence [capture] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 10,
+    "moved": 3.67,
+    "prompts": [
+     "",
+     "EHold to restrain target"
+    ],
+    "log": [
+     "capture:flee",
+     "capture:follow",
+     "waited for escort follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": 7.2
+   }
+  },
+  {
+   "name": "warehouse/capture/quick/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.42,
+    "colors": 48
+   }
+  },
+  {
+   "name": "warehouse/capture/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 91
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 29,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 211,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/capture/standard/7: objective sequence [sab:comms → capture] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "",
+     "EHold to restrain target"
+    ],
+    "log": [
+     "sab:comms:done",
+     "capture:surrender",
+     "capture:follow",
+     "waited for escort follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": 7.2
+   }
+  },
+  {
+   "name": "warehouse/capture/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 52
+   }
+  },
+  {
+   "name": "warehouse/capture/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 89
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 34,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 213,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/capture/extended/7: objective sequence [sab:comms → hack → capture] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "EHold to access secure terminal",
+     "",
+     "EHold to restrain target"
+    ],
+    "log": [
+     "sab:comms:done",
+     "hack:done",
+     "capture:surrender",
+     "capture:follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": 7.1
+   }
+  },
+  {
+   "name": "warehouse/capture/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 53
+   }
+  },
+  {
+   "name": "warehouse/sabotage/quick/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 88
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 39,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 209,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/sabotage/quick/7: objective sequence [sab:comms] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 10,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications"
+    ],
+    "log": [
+     "sab:comms:done"
+    ],
+    "reached": [
+     true,
+     false
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "warehouse/sabotage/quick/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 53
+   }
+  },
+  {
+   "name": "warehouse/sabotage/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 89
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 41,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 211,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/sabotage/standard/7: objective sequence [sab:comms → sab:charge] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "EHold to plant charge"
+    ],
+    "log": [
+     "sab:comms:done",
+     "sab:charge:done"
+    ],
+    "reached": [
+     true,
+     true,
+     false
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "warehouse/sabotage/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 52
+   }
+  },
+  {
+   "name": "warehouse/sabotage/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 89
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 47,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 213,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/sabotage/extended/7: objective sequence [sab:comms → sab:security → sab:charge] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "EHold to disable security control",
+     "EHold to plant charge"
+    ],
+    "log": [
+     "sab:comms:done",
+     "sab:security:done",
+     "sab:charge:done"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     false
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "warehouse/sabotage/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 53
+   }
+  },
+  {
+   "name": "warehouse/rescue/quick/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 91
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 51,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 209,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/rescue/quick/7: objective sequence [rescue] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 10,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to free hostage"
+    ],
+    "log": [
+     "rescue:follow"
+    ],
+    "reached": [
+     true,
+     true
+    ],
+    "assists": 1,
+    "state": "won",
+    "civFollow": 6.9
+   }
+  },
+  {
+   "name": "warehouse/rescue/quick/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 53
+   }
+  },
+  {
+   "name": "warehouse/rescue/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 90
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 57,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 211,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/rescue/standard/7: objective sequence [keycard → rescue] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.67,
+    "prompts": [
+     "ETake access credential",
+     "EHold to free hostage"
+    ],
+    "log": [
+     "keycard:done",
+     "rescue:follow",
+     "waited for escort follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": 7.1
+   }
+  },
+  {
+   "name": "warehouse/rescue/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 51
+   }
+  },
+  {
+   "name": "warehouse/rescue/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 89
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 63,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 213,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/rescue/extended/7: objective sequence [sab:comms → keycard → rescue] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "ETake access credential",
+     "EHold to free hostage"
+    ],
+    "log": [
+     "sab:comms:done",
+     "keycard:done",
+     "rescue:follow",
+     "waited for escort follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "assists": 3,
+    "state": "won",
+    "civFollow": 7.3
+   }
+  },
+  {
+   "name": "warehouse/rescue/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 51
+   }
+  },
+  {
+   "name": "warehouse/multi/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 91
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 65,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 211,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.29
+   }
+  },
+  {
+   "name": "warehouse/multi/standard/7: objective sequence [sab:security → retrieve] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.59,
+    "prompts": [
+     "EHold to disable security control",
+     "ETake intelligence package"
+    ],
+    "log": [
+     "sab:security:done",
+     "retrieve:done"
+    ],
+    "reached": [
+     true,
+     true,
+     false
+    ],
+    "assists": 3,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "warehouse/multi/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 52
+   }
+  },
+  {
+   "name": "warehouse/multi/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 13.7,
+     "lit": 0.454,
+     "colors": 83
+    },
+    "spawn": {
+     "mean": 14.6,
+     "lit": 0.484,
+     "colors": 89
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 70,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 213,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "warehouse/multi/extended/7: objective sequence [sab:comms → retrieve → rescue] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "ETake intelligence package",
+     "EHold to free hostage"
+    ],
+    "log": [
+     "sab:comms:done",
+     "retrieve:done",
+     "rescue:follow",
+     "waited for escort follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "assists": 4,
+    "state": "won",
+    "civFollow": 7.2
+   }
+  },
+  {
+   "name": "warehouse/multi/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.418,
+    "colors": 51
+   }
+  },
+  {
+   "name": "forest/intel/quick/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 126
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 77,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 451,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "forest/intel/quick/7: objective sequence [retrieve] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 10,
+    "moved": 3.67,
+    "prompts": [
+     "ETake intelligence package"
+    ],
+    "log": [
+     "retrieve:done"
+    ],
+    "reached": [
+     true,
+     false
+    ],
+    "assists": 1,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "forest/intel/quick/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 149
+   }
+  },
+  {
+   "name": "forest/intel/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 126
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 84,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 453,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "forest/intel/standard/7: objective sequence [keycard → hack] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.67,
+    "prompts": [
+     "ETake access credential",
+     "EHold to access secure terminal"
+    ],
+    "log": [
+     "keycard:done",
+     "hack:done"
+    ],
+    "reached": [
+     true,
+     true,
+     false
+    ],
+    "assists": 1,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "forest/intel/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 145
+   }
+  },
+  {
+   "name": "forest/intel/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 126
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 91,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 455,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "forest/intel/extended/7: objective sequence [sab:security → keycard → hack] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable security control",
+     "ETake access credential",
+     "EHold to access secure terminal"
+    ],
+    "log": [
+     "sab:security:done",
+     "keycard:done",
+     "hack:done"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     false
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "forest/intel/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 145
+   }
+  },
+  {
+   "name": "forest/capture/quick/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 126
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 99,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 451,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "forest/capture/quick/7: objective sequence [capture] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 10,
+    "moved": 3.67,
+    "prompts": [
+     "",
+     "EHold to restrain target"
+    ],
+    "log": [
+     "capture:flee",
+     "capture:follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true
+    ],
+    "assists": 1,
+    "state": "won",
+    "civFollow": 6.9
+   }
+  },
+  {
+   "name": "forest/capture/quick/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 145
+   }
+  },
+  {
+   "name": "forest/capture/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.511,
+     "colors": 127
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 106,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 453,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.29
+   }
+  },
+  {
+   "name": "forest/capture/standard/7: objective sequence [sab:comms → capture] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.59,
+    "prompts": [
+     "EHold to disable communications",
+     "EHold to restrain target"
+    ],
+    "log": [
+     "sab:comms:done",
+     "capture:follow",
+     "waited for escort follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true
+    ],
+    "assists": 4,
+    "state": "won",
+    "civFollow": 7.2
+   }
+  },
+  {
+   "name": "forest/capture/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 144
+   }
+  },
+  {
+   "name": "forest/capture/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 126
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 113,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 455,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "forest/capture/extended/7: objective sequence [sab:comms → hack → capture] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "EHold to access secure terminal",
+     "",
+     "EHold to restrain target"
+    ],
+    "log": [
+     "sab:comms:done",
+     "hack:done",
+     "capture:flee",
+     "capture:follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "assists": 4,
+    "state": "won",
+    "civFollow": 6.9
+   }
+  },
+  {
+   "name": "forest/capture/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 148
+   }
+  },
+  {
+   "name": "forest/sabotage/quick/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 124
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 119,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 451,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 0.93
+   }
+  },
+  {
+   "name": "forest/sabotage/quick/7: objective sequence [sab:comms] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 10,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications"
+    ],
+    "log": [
+     "sab:comms:done"
+    ],
+    "reached": [
+     true,
+     false
+    ],
+    "assists": 1,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "forest/sabotage/quick/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 146
+   }
+  },
+  {
+   "name": "forest/sabotage/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.511,
+     "colors": 125
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 124,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 453,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "forest/sabotage/standard/7: objective sequence [sab:comms → sab:charge] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "EHold to plant charge"
+    ],
+    "log": [
+     "sab:comms:done",
+     "sab:charge:done"
+    ],
+    "reached": [
+     true,
+     true,
+     false
+    ],
+    "assists": 3,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "forest/sabotage/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 143
+   }
+  },
+  {
+   "name": "forest/sabotage/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 126
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 131,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 455,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "forest/sabotage/extended/7: objective sequence [sab:comms → sab:security → sab:charge] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "EHold to disable security control",
+     "EHold to plant charge"
+    ],
+    "log": [
+     "sab:comms:done",
+     "sab:security:done",
+     "sab:charge:done"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     false
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "forest/sabotage/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 145
+   }
+  },
+  {
+   "name": "forest/rescue/quick/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 124
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 139,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 451,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "forest/rescue/quick/7: objective sequence [rescue] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 10,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to free hostage"
+    ],
+    "log": [
+     "rescue:follow",
+     "waited for escort follow"
+    ],
+    "reached": [
+     true,
+     true
+    ],
+    "assists": 1,
+    "state": "won",
+    "civFollow": 7.1
+   }
+  },
+  {
+   "name": "forest/rescue/quick/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.392,
+    "colors": 143
+   }
+  },
+  {
+   "name": "forest/rescue/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 124
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 146,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 453,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.29
+   }
+  },
+  {
+   "name": "forest/rescue/standard/7: objective sequence [keycard → rescue] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.59,
+    "prompts": [
+     "ETake access credential",
+     "EHold to free hostage"
+    ],
+    "log": [
+     "keycard:done",
+     "rescue:follow",
+     "waited for escort follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true
+    ],
+    "assists": 4,
+    "state": "won",
+    "civFollow": 7.2
+   }
+  },
+  {
+   "name": "forest/rescue/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 149
+   }
+  },
+  {
+   "name": "forest/rescue/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 126
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 153,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 455,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.15
+   }
+  },
+  {
+   "name": "forest/rescue/extended/7: objective sequence [sab:comms → keycard → rescue] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.67,
+    "prompts": [
+     "EHold to disable communications",
+     "ETake access credential",
+     "EHold to free hostage"
+    ],
+    "log": [
+     "sab:comms:done",
+     "keycard:done",
+     "rescue:follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "assists": 2,
+    "state": "won",
+    "civFollow": 6.9
+   }
+  },
+  {
+   "name": "forest/rescue/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13,
+    "lit": 0.392,
+    "colors": 144
+   }
+  },
+  {
+   "name": "forest/multi/standard/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.5,
+     "lit": 0.512,
+     "colors": 125
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 160,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 453,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.29
+   }
+  },
+  {
+   "name": "forest/multi/standard/7: objective sequence [sab:security → retrieve] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 11,
+    "moved": 3.59,
+    "prompts": [
+     "EHold to disable security control",
+     "ETake intelligence package"
+    ],
+    "log": [
+     "sab:security:done",
+     "retrieve:done"
+    ],
+    "reached": [
+     true,
+     true,
+     false
+    ],
+    "assists": 1,
+    "state": "won",
+    "civFollow": null
+   }
+  },
+  {
+   "name": "forest/multi/standard/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 146
+   }
+  },
+  {
+   "name": "forest/multi/extended/7: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves",
+   "ok": true,
+   "info": {
+    "brief": {
+     "mean": 19.2,
+     "lit": 0.566,
+     "colors": 120
+    },
+    "spawn": {
+     "mean": 15.3,
+     "lit": 0.499,
+     "colors": 124
+    },
+    "cam": {
+     "view": [
+      0,
+      0
+     ],
+     "gateDropped": 167,
+     "finite": true,
+     "eyeOk": true,
+     "inScene": 455,
+     "hud": "block"
+    },
+    "resume": [
+     0,
+     0,
+     "playing"
+    ],
+    "realMove": 1.29
+   }
+  },
+  {
+   "name": "forest/multi/extended/7: objective sequence [sab:comms → retrieve → rescue] completed on foot, extraction won",
+   "ok": true,
+   "info": {
+    "enemies": 12,
+    "moved": 3.59,
+    "prompts": [
+     "EHold to disable communications",
+     "ETake intelligence package",
+     "EHold to free hostage"
+    ],
+    "log": [
+     "sab:comms:done",
+     "retrieve:done",
+     "rescue:follow",
+     "waited for escort follow"
+    ],
+    "reached": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "assists": 3,
+    "state": "won",
+    "civFollow": 7.3
+   }
+  },
+  {
+   "name": "forest/multi/extended/7: restart renders a visible scene",
+   "ok": true,
+   "info": {
+    "mean": 13.1,
+    "lit": 0.402,
+    "colors": 145
+   }
+  }
+ ]
+}

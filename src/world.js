@@ -394,6 +394,16 @@ export class Nav {
     if (pts.length < 2) return pts;
     const out = [];
     let i = 0;
+    // The walker starts where it actually stands, not at its cell centre (a cover spot can sit against an obstacle):
+    // the first straight leg must be clear from that point, otherwise it steps to its cell centre first. Without
+    // this, guards leaving a cover spot cut straight through the end of the barrier they were crouched behind.
+    const s0 = { x: ax, z: az };
+    if (!pts[1].link && Math.hypot(ax - pts[0].x, az - pts[0].z) > 0.05) {
+      let j = Math.min(pts.length - 1, 40);
+      for (let k = 1; k <= j; k++) if (pts[k].link) { j = k - 1; break; }
+      while (j >= 1 && !(this.line(s0, pts[j]) && this.line(pts[0], pts[j]))) j--;
+      if (j >= 1) { out.push(pts[j]); i = j; } else out.push(pts[0]);
+    }
     while (i < pts.length - 1) {
       if (pts[i + 1].link) { out.push(pts[i + 1]); i++; continue; } // traversal segments are never smoothed
       let j = Math.min(pts.length - 1, i + 40);

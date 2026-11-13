@@ -15,7 +15,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
   p.on('pageerror', (e) => errs.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' | ')));
   await p.goto(URL);
   await p.waitForFunction('window.__SP && window.__SP.state === "menu"', null, { timeout: 90000 });
-  await p.evaluate(() => {
+  const helpers = () => p.evaluate(() => {
     const G = window.__SP;
     window.sim = (sec, fn) => { const n = Math.round(sec * 60); for (let i = 0; i < n && G.state === 'playing'; i++) { if (fn && fn(i) === false) break; G.step(1 / 60); } };
     window.key = (c, d) => { G.inp.k[c] = d; };
@@ -23,6 +23,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     window.calm = () => G.enemies.forEach((e) => { e.percT = 1e9; e.los = false; e.detect = 0; }); // freeze perception for isolated mechanics tests
     window.solo = (i = 0) => { const e = G.enemies[i]; G.enemies.forEach((o) => { if (o !== e) { o.dead = true; o.found = true; o.ch.root.visible = false; } }); return e; };
   });
+  await helpers();
   const start = async (map, ai, load = {}) => {
     await p.evaluate(([map, ai, load]) => {
       const G = window.__SP;
@@ -719,6 +720,179 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     });
     check('feedback: surface tags on metal containers and wall cladding, wooden crates and the concrete floor', o.container === 'metal' && o.crate === 'wood' && o.ground === 'concrete' && o.wall === 'metal' && o.groundImpact === 'concrete', o);
     check('feedback: low-ammo colour and RELOAD prompt; per-weapon muzzle flash', o.colors[0] === '' && o.colors[1] !== '' && o.hint1 === 'LOW AMMO' && o.hint0 === 'RELOAD [R]' && o.flash[0] === 0.9 && o.flash[1] === 0.55, [o.colors, o.hint1, o.hint0, o.flash]);
+  });
+
+  await run('aisoak', async () => {
+    // each intelligence profile, one minute of live combat against an exposed operator who does not shoot back:
+    // they must notice, raise security, fire, reload, move along the nav grid, stay out of walls and keep valid state
+    const out = {};
+    for (const ai of ['recruit', 'tactical', 'elite']) {
+      await start('warehouse', ai, { mission: 'intel', length: 'standard', seed: 21 });
+      out[ai] = await p.evaluate(() => {
+        const G = window.__SP, P = G.player, nav = G.world.nav, o = { state0: G.state, n0: G.enemies.length, maxSec: 0, dmg: 0, shots: 0, reloads: 0, inWall: 0, nan: 0, nades: 0 };
+        // a guard's core (r 0.15 m, knees to shoulders) overlapping a solid collider = walked into geometry
+        // (more than 0.1 m deep; grazing an edge with the body radius is not clipping)
+        const insideSolid = (q) => G.world.colliders.some((c) => c.solid && q.x - 0.1 > c.x0 && q.x + 0.1 < c.x1 && q.z - 0.1 > c.z0 && q.z + 0.1 < c.z1 && q.y + 0.4 < c.y1 && q.y + 1.5 > c.y0);
+        const start = new Map(G.enemies.map((e) => [e, e.pos.clone()])), wasRel = new Map(), nadeSeen = new Set(), ammo = new Map(G.enemies.map((e) => [e, e.ammo]));
+        // the operator stands in the open east yard; one patrol walks into view 12 m away (positions are random per run,
+        // so this makes first contact deterministic; everything after it is the AI's own doing)
+        P.pos.set(40, 0, 12); P.yaw = 0; const sp = G.enemies.find((e) => e.duty === 'patrol') || G.enemies[0];
+        sp.release(); sp.pos.set(40, 0, 0); sp.yaw = sp.baseYaw = Math.PI; sp.path = null; sp.waitT = 1e9; sp.set('PATROL'); sp.sync(); sp.ch.refresh(); // on watch facing the yard until contact
+        // sim() steps without rendering; the real loop's render refreshes every world matrix (soldiers' eye bones) each frame
+        o.steps = 0; sim(60, () => {
+          G.scene.updateMatrixWorld(); o.steps++; o.dmg += Math.max(0, 100 - P.hp); P.hp = 100; P.dead = false;
+          o.maxSec = Math.max(o.maxSec, G.sec.level);
+          for (const e of G.enemies) {
+            if (e.dead) continue;
+            if (!Number.isFinite(e.pos.x + e.pos.y + e.pos.z)) o.nan++;
+            if (!e.trav && insideSolid(e.pos)) { o.inWall++; if (!o.wallAt) o.wallAt = [+e.pos.x.toFixed(2), +e.pos.y.toFixed(2), +e.pos.z.toFixed(2), e.state, e.duty]; }
+            const a = ammo.get(e) ?? 30; if (e.ammo < a) o.shots += a - e.ammo; ammo.set(e, e.ammo);
+            if (e.reloading && !wasRel.get(e)) o.reloads++; wasRel.set(e, e.reloading);
+          }
+          for (const g of G.gren.list) if (g.owner !== 'player' && !nadeSeen.has(g)) { nadeSeen.add(g); o.nades++; }
+        });
+        o.state1 = G.state; o.endt = document.getElementById('endt').textContent; o.spDist = +sp.pos.distanceTo(P.pos).toFixed(1); o.spState = [sp.state, sp.dead, +sp.detect.toFixed(2)];
+        o.n1 = G.enemies.length; o.reinforced = G.sec.reinforced; o.moved = G.enemies.filter((e) => start.has(e) && !e.dead && e.pos.distanceTo(start.get(e)) > 2).length; o.alive = G.enemies.filter((e) => !e.dead).length;
+        // damage registration: the operator returns fire at the nearest guard that has a clear line
+        // damage registration: a guard standing in the open 12 m away, held in place, is shot until he falls
+        const c = G.camera.position, target = G.enemies.find((e) => !e.dead); o.target = !!target;
+        if (target) { P.pos.set(40, 0, 12); target.release(); target.pos.set(40, 0, 0); target.yaw = target.baseYaw = 0; target.path = null; target.waitT = 1e9; target.set('PATROL'); target.percT = 1e9; target.sync(); target.ch.refresh(); G.step(1 / 60);
+          const hp0 = target.hp, k0 = G.stats.kills, hold = target.pos.clone(); for (let i = 0; i < 300 && !target.dead; i++) { P.hp = 100; target.pos.copy(hold); const t = target.pos; P.yaw = Math.atan2(-(t.x - c.x), -(t.z - c.z)); P.pitch = Math.atan2(t.y + 1.2 - c.y, Math.hypot(t.x - c.x, t.z - c.z)); P.ry = P.rp = 0; G.inp.lmb = true; G.inp.lmbPressed = i % 6 === 0; if (P.slot.mag === 0) P.slot.mag = 30; G.step(1 / 60); } G.inp.lmb = false; o.kill = [hp0, +target.hp.toFixed(0), target.dead, G.stats.kills - k0]; }
+        return o;
+      });
+    }
+    const ok = (r) => r.maxSec >= 2 && r.shots > 20 && r.dmg > 0 && r.moved >= 2 && r.inWall === 0 && r.nan === 0 && r.target && r.kill[2] && r.kill[3] === 1;
+    const prof = ['recruit', 'tactical', 'elite'];
+    check('ai: recruit, tactical and elite all detect, raise security, fire, move and stay out of walls; kills register; guards reload', prof.every((k) => ok(out[k])) && prof.reduce((a, k) => a + out[k].reloads, 0) >= 2, out);
+  });
+
+  await run('loadouts', async () => {
+    // every weapon x every optic it offers, with every attachment it accepts: visible, on screen, fires, reloads, switches
+    const defs = await p.evaluate(() => { const G = window.__SP; return G.WEAPONS_DEF; });
+    const bad = [], seen = [];
+    for (const d of defs.filter((x) => !x.melee)) for (const optic of d.optics) {
+      const att = { optic, muzzle: !!d.muzzle, grip: !!d.grip, laser: !!d.laser };
+      const load = d.slot === 'primary' ? { primary: d.id, att: { [d.id]: att } } : { secondary: d.id, att: { [d.id]: att } };
+      await start(d.slot === 'primary' ? 'warehouse' : 'forest', 'tactical', load);
+      const r = await p.evaluate(([slotI, id, att]) => {
+        const G = window.__SP, P = G.player, o = { id, optic: att.optic }; calm(); G.enemies.forEach((e) => { e.dead = true; e.ch.root.visible = false; });
+        P.pos.set(G.mission.def.entry.x, 0, G.mission.def.entry.z); P.yaw = G.mission.def.entry.yaw; P.pitch = 0.05;
+        if (slotI) { press('Digit2'); sim(0.7); }
+        const s = P.slot; o.slotOk = s.id === id && P.cur === slotI; o.only = P.slots.every((x, i) => x.view.visible === (i === slotI));
+        // the gun is drawn: real geometry, inside the view-model camera's frustum
+        let meshes = 0, onScreen = 0; const V = G.v1.constructor, v = new V(); G.wcam.updateMatrixWorld();
+        s.view.updateMatrixWorld(true); s.view.traverse((m) => { if (!m.isMesh || !m.visible || !m.geometry.attributes.position) return; meshes++; m.geometry.computeBoundingSphere(); v.copy(m.geometry.boundingSphere.center).applyMatrix4(m.matrixWorld).project(G.wcam); if (Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1 && v.z < 1) onScreen++; });
+        o.meshes = meshes; o.onScreen = onScreen;
+        // attachments reach the weapon stats
+        o.stats = { noise: s.st.noise, base: G.WEAPONS[id].noise, recoil: s.st.recoil, baseRecoil: G.WEAPONS[id].recoil, laser: !!s.st.laser, optic: s.st.optic ? s.st.optic.name : null };
+        // aim: full ADS, FOV matches the optic, shot follows the camera axis
+        G.inp.rmb = true; sim(0.8); o.adsF = +P.adsF.toFixed(2); o.fovOk = Math.abs(G.camera.fov - P.adsFov()) < 0.6;
+        const d = new V(); G.camera.getWorldDirection(d); o.align = +(1 - d.dot(P.fwd)).toExponential(1);
+        // fire once
+        const m0 = s.mag, sh0 = G.stats.shots; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(0.6); o.fired = [m0 - s.mag, G.stats.shots - sh0];
+        G.inp.rmb = false; sim(0.4);
+        // reload from a partly empty magazine
+        s.mag = 1; const res0 = s.reserve; press('KeyR'); sim(6, () => P.reloading || P.relIn || false); sim(4); o.reload = [s.mag, s.st.mag, res0 - s.reserve];
+        // switch through every slot and back
+        press(slotI ? 'Digit1' : 'Digit2'); sim(0.7); const other = P.cur; press('Digit3'); sim(0.7); const knife = P.slot.id; G.inp.lmb = true; G.inp.lmbPressed = true; sim(0.05); G.inp.lmb = false; sim(0.7);
+        press(slotI ? 'Digit2' : 'Digit1'); sim(0.7); o.switch = [other, knife, P.cur, P.slots.filter((x) => x.view.visible).length];
+        return o;
+      }, [d.slot === 'primary' ? 0 : 1, d.id, att]);
+      seen.push(`${d.id}/${optic}`);
+      const st = r.stats, ok = r.slotOk && r.only && r.meshes > 0 && r.onScreen > 0 && (!att.muzzle || st.noise < st.base) && (!att.grip || st.recoil < st.baseRecoil) && r.adsF === 1 && r.fovOk && +r.align < 1e-6 && r.fired[0] === 1 && r.fired[1] >= 1 && r.reload[0] === r.reload[1] && r.reload[2] > 0 && r.switch[1] === 'knife' && r.switch[2] === (d.slot === 'primary' ? 0 : 1) && r.switch[3] === 1;
+      if (!ok) bad.push(r);
+    }
+    check(`loadouts: ${seen.length} weapon/optic combinations with all compatible attachments are visible, on screen, aim on axis, fire, reload and switch`, bad.length === 0 && seen.length >= 10, bad.length ? bad.slice(0, 2) : seen);
+    // kits: inventory matches, every grenade type throws a live grenade, medkit and stim heal
+    const kits = {};
+    for (const kit of ['assault', 'recon', 'medic']) {
+      await start('warehouse', 'tactical', { kit });
+      kits[kit] = await p.evaluate((kit) => {
+        const G = window.__SP, P = G.player, o = {}; calm(); G.enemies.forEach((e) => { e.dead = true; e.ch.root.visible = false; });
+        P.pos.set(34, 0, 0); P.yaw = 0; P.pitch = 0.2; sim(0.3); o.inv = { ...P.inv }; o.thrown = {};
+        for (const t of ['frag', 'flash', 'smoke']) { if (!P.inv[t]) continue; let guard = 0; while (P.throwSel !== t && guard++ < 4) { press('Digit4'); sim(0.05); } const n0 = G.gren.list.length, i0 = P.inv[t]; press('KeyG'); sim(1.2); o.thrown[t] = [i0 - P.inv[t], G.gren.list.length > n0 || G.gren.list.some((g) => g.type === t || g.kind === t)]; sim(4); }
+        P.hp = 40; const m0 = P.inv.med; press('KeyH'); sim(8); o.med = [m0 - P.inv.med, P.hp];
+        P.hp = 40; const s0 = P.inv.stim; press('KeyX'); sim(3); o.stim = [s0 - P.inv.stim, P.hp];
+        return o;
+      }, kit);
+    }
+    const K = await p.evaluate(() => window.__SP.KITS_DEF);
+    const kitOk = Object.keys(kits).every((k) => { const r = kits[k], d = K[k]; return ['frag', 'flash', 'smoke', 'med', 'stim'].every((t) => r.inv[t] === d[t]) && Object.values(r.thrown).every((x) => x[0] === 1 && x[1]) && Object.keys(r.thrown).length === ['frag', 'flash', 'smoke'].filter((t) => d[t] > 0).length && r.med[0] === 1 && r.med[1] > 90 && r.stim[0] === 1 && r.stim[1] >= 60; });
+    check('loadouts: each kit carries its inventory; frag, flash and smoke throw; medkit and stim heal', kitOk, kits);
+  });
+
+  await run('settings', async () => {
+    // every control in Settings, driven through its UI element, has its functional effect, persists, and resets
+    await start('warehouse', 'tactical', { primary: 'm4' });
+    const o = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, cam = G.camera, $ = (id) => document.getElementById(id), o = {}; calm(); G.enemies.forEach((e) => { e.dead = true; e.ch.root.visible = false; });
+      const setRange = (id, v) => { const el = $(id); el.value = v; el.dispatchEvent(new Event('input')); }, setChk = (id, v) => { const el = $(id); el.checked = v; el.dispatchEvent(new Event('change')); };
+      const yawPer = (n = 50) => { P.pitch = 0; const y = P.yaw; G.inp.mx = n; G.step(1 / 60); return (y - P.yaw) / n; };
+      const pitchPer = () => { P.pitch = 0; G.inp.my = -50; G.step(1 / 60); const r = P.pitch / 50; P.pitch = 0; return r; };
+      P.pos.set(34, 0, 0); P.yaw = 0; sim(0.3);
+      const base = yawPer(); setRange('sens', 2); o.sens = [G.sens, +(yawPer() / base).toFixed(3), $('sensv').textContent]; setRange('sens', 1);
+      const pb = pitchPer(); setRange('sensY', 1.5); o.sensY = [G.sensY, +(pitchPer() / pb).toFixed(3), +(yawPer() / base).toFixed(3)]; setRange('sensY', 1);
+      G.inp.rmb = true; sim(0.5); const ads = yawPer(); setRange('sensAds', 0.5); o.sensAds = [G.sensAds, +(yawPer() / ads).toFixed(3)]; setRange('sensAds', 1); G.inp.rmb = false; sim(0.5);
+      o.hipAfterAds = +(yawPer() / base).toFixed(3);
+      setRange('fov', 90); sim(0.2); o.fov = [G.fov, +cam.fov.toFixed(1)]; setRange('fov', 75); sim(0.2);
+      setRange('vol', 0.3); o.vol = [G.vol, G.audio.master ? +G.audio.master.gain.value.toFixed(2) : 'no-audio']; setRange('vol', 0.75);
+      setRange('wsway', 0); P.yaw = 0; let sw = 0; for (let i = 0; i < 20; i++) { G.inp.mx = 40; G.step(1 / 60); sw = Math.max(sw, Math.abs(P.vm.ry)); } o.wsway0 = +sw.toFixed(4); setRange('wsway', 1); sim(1);
+      setRange('cammo', 0); o.cammo = G.camMotion; setRange('headBob', 0.4); o.headBob = G.headBob; setChk('sfovchk', false); o.sfov = G.sprintFov;
+      setChk('ovchk', true); o.overlay = [G.overlay, $('perfov').style.display]; setChk('ovchk', false);
+      setChk('adchk', false); o.adaptive = [G.adaptive, G.pacing.scale]; setChk('adchk', true);
+      setChk('rawchk', false); o.raw = G.rawInput; setChk('rawchk', true);
+      setChk('llchk', true); o.lowlat = [G.lowLatency, $('llnote').style.display]; setChk('llchk', false);
+      const t = $('fpstarget'); t.value = 'refresh'; t.dispatchEvent(new Event('change')); o.target = [G.fpsTarget, +G.pacing.targetMs().toFixed(2)]; t.value = '60'; t.dispatchEvent(new Event('change'));
+      // set a recognisable state to persist
+      setRange('sens', 1.37); setRange('sensScope', 0.65); setRange('sensY', 0.8); setRange('wsway', 0.5); setRange('cammo', 0.2); setRange('headBob', 0.4); setChk('sfovchk', false);
+      document.querySelector('.opts[data-k="quality"] [data-v="low"]').click(); o.quality = G.sel.quality;
+      o.saved = JSON.parse(localStorage.getItem('sp2_settings'));
+      return o;
+    });
+    check('settings: sensitivity, vertical and ADS multipliers change look rate only where they should', o.sens[1] === 2 && /2\.00/.test(o.sens[2]) && o.sensY[1] === 1.5 && o.sensY[2] === 1 && o.sensAds[1] === 0.5 && o.hipAfterAds === 1, o);
+    check('settings: FOV, volume, weapon sway 0, camera motion, head bob, sprint FOV, overlay, adaptive, raw input, low latency, FPS target all apply', o.fov[1] === 90 && o.vol[0] === 0.3 && (o.vol[1] === 'no-audio' || o.vol[1] === 0.3) && o.wsway0 < 1e-4 && o.cammo === 0 && o.headBob === 0.4 && o.sfov === false && o.overlay[0] === true && o.overlay[1] === 'block' && o.adaptive[0] === false && o.adaptive[1] === 1 && o.raw === false && o.lowlat[0] === true && o.lowlat[1] === 'inline' && o.target[0] === 'refresh', o);
+    const sv = o.saved;
+    // graphics presets change what is rendered (shadows, resolution, shadow-map size, ground clutter)
+    const q = {};
+    for (const lv of ['low', 'med', 'high']) {
+      await p.evaluate((lv) => { document.querySelector(`.opts[data-k="quality"] [data-v="${lv}"]`).click(); }, lv);
+      await start('forest', 'tactical');
+      q[lv] = await p.evaluate(() => { const G = window.__SP, R = G.renderer, W = G.world; sim(0.2); return [R.shadowMap.enabled, +R.getPixelRatio().toFixed(2), W.moon.shadow.mapSize.x, W.meshes.filter((m) => m.userData.detail && m.visible).length, W.lodDist]; });
+    }
+    check('settings: Low / Medium / High presets change shadows, resolution, shadow-map size and detail', q.low[0] === false && q.med[0] && q.high[0] && q.low[1] === 1 && q.low[3] === 0 && q.med[3] > 0 && q.high[2] > q.med[2] && q.med[2] > q.low[2] && q.low[4] < q.med[4] && q.med[4] < q.high[4], q);
+    await p.evaluate(() => { document.querySelector('.opts[data-k="quality"] [data-v="low"]').click(); });
+    check('settings: everything is written to storage', sv.sens === 1.37 && sv.sensScope === 0.65 && sv.sensY === 0.8 && sv.wsway === 0.5 && sv.cam === 0.2 && sv.headBob === 0.4 && sv.sprintFov === false && sv.quality === 'low', sv);
+    // reload in the same browser context: values come back, in the model and in the UI
+    const p2 = p; await p.reload(); await p.waitForFunction('window.__SP && window.__SP.state === "menu"', null, { timeout: 90000 }); await helpers();
+    const r = await p2.evaluate(() => { const G = window.__SP, $ = (id) => document.getElementById(id); return { model: [G.sens, G.sensScope, G.sensY, G.weaponSway, G.camMotion, G.headBob, G.sprintFov, G.sel.quality], ui: [+$('sens').value, +$('sensScope').value, +$('sensY').value, +$('wsway').value, +$('cammo').value, +$('headBob').value, $('sfovchk').checked, document.querySelector('.opts[data-k="quality"] .sel').dataset.v] }; });
+    check('settings: persist across a reload (model and UI)', JSON.stringify(r.model) === JSON.stringify([1.37, 0.65, 0.8, 0.5, 0.2, 0.4, false, 'low']) && JSON.stringify(r.ui) === JSON.stringify(r.model), r);
+    const rs = await p2.evaluate(() => { const G = window.__SP, $ = (id) => document.getElementById(id); $('resetctl').click(); return { model: [G.sens, G.sensAds, G.sensScope, G.sensY, G.fov, G.camMotion, G.headBob, G.weaponSway, G.sprintFov], ui: [+$('sens').value, +$('sensScope').value, $('sfovchk').checked], kept: G.sel.quality, saved: JSON.parse(localStorage.getItem('sp2_settings')) }; });
+    check('settings: reset restores control and comfort defaults, leaves graphics alone, and saves', JSON.stringify(rs.model) === JSON.stringify([1, 1, 1, 1, 75, 0.5, 1, 1, true]) && rs.ui[0] === 1 && rs.ui[1] === 1 && rs.ui[2] === true && rs.kept === 'low' && rs.saved.sens === 1 && rs.saved.quality === 'low', rs);
+    await p.evaluate(() => { localStorage.removeItem('sp2_settings'); }); await p.reload(); await p.waitForFunction('window.__SP && window.__SP.state === "menu"', null, { timeout: 90000 }); await helpers();
+  });
+
+  await run('robustness', async () => {
+    // an exception inside the frame loop stops the mission with a visible message (never a frozen / black game)
+    await start('warehouse', 'tactical', { mission: 'rescue', length: 'quick', seed: 5 });
+    await p.evaluate(() => { const G = window.__SP; G.mission.__u = G.mission.update; G.mission.update = () => { throw new Error('qa-forced failure'); }; });
+    const nErr = errs.length;
+    await p.waitForFunction('window.__SP.state === "error"', null, { timeout: 30000 }).catch(() => {});
+    const f = await p.evaluate(() => { const el = document.getElementById('fatal'); return { state: window.__SP.state, shown: getComputedStyle(el).display, text: el.textContent }; });
+    await p.waitForTimeout(300); const thrown = errs.slice(nErr).filter((m) => m.includes('qa-forced failure')).length; errs.splice(nErr, errs.length - nErr, ...errs.slice(nErr).filter((m) => !m.includes('qa-forced failure')));
+    await p.click('#fatalmenu'); const back = await p.evaluate(() => [window.__SP.state, getComputedStyle(document.getElementById('fatal')).display]);
+    check('robustness: a frame-loop exception stops the mission and shows a visible error with a way back to the menu', f.state === 'error' && f.shown === 'block' && /SIMULATION ERROR/.test(f.text) && /qa-forced failure/.test(f.text) && thrown === 1 && back[0] === 'menu' && back[1] === 'none', [f, thrown, back]);
+    // the next mission after a failure renders and runs normally
+    await start('forest', 'tactical', { mission: 'rescue', length: 'quick', seed: 6 });
+    const ok = await p.evaluate(() => { const G = window.__SP; sim(0.5); return [G.state, !!G.mission.civ, G.scene.children.length > 50]; });
+    check('robustness: a mission started after a failure plays normally', ok[0] === 'playing' && ok[1] && ok[2], ok);
+    // losing the WebGL context says so and recovers when the context comes back
+    const lost = await p.evaluate(async () => {
+      const G = window.__SP, ext = document.getElementById('c').getContext('webgl2').getExtension('WEBGL_lose_context'); if (!ext) return null;
+      ext.loseContext(); await new Promise((r) => setTimeout(r, 300)); const a = [G.contextLost, getComputedStyle(document.getElementById('fatal')).display, document.querySelector('#fatal b').textContent];
+      ext.restoreContext(); await new Promise((r) => setTimeout(r, 600)); return [a, [G.contextLost, getComputedStyle(document.getElementById('fatal')).display]];
+    });
+    const fr = await p.evaluate(() => window.__SP.frames); await p.waitForTimeout(800); const fr2 = await p.evaluate(() => window.__SP.frames);
+    check('robustness: WebGL context loss shows a message, restoring the context clears it and frames continue', lost && lost[0][0] === true && lost[0][1] === 'block' && /DEVICE LOST/.test(lost[0][2]) && lost[1][0] === false && lost[1][1] === 'none' && fr2 > fr, [lost, fr2 - fr]);
   });
 
   await run('stability', async () => {
