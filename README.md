@@ -1,11 +1,27 @@
-# SHADOW PROTOCOL V2.1
+# SHADOW PROTOCOL V2.4
 
-Single-player tactical FPS for the browser (Three.js). No backend, no accounts, no runtime AI services.
+Tactical FPS for the browser (Three.js). It plays solo, or as 2–4 player co-op on your local network. There are no
+accounts, cloud services or runtime AI services.
 
 ## Play
 
-Open `index.html` in a desktop browser (Chrome, Edge or Firefox). No server is needed: code is bundled in
-`dist/game.js` and all models are embedded in `dist/assets.js`.
+**Solo:** open `index.html` in a desktop browser (Chrome, Edge or Firefox). No server is needed: the code is bundled
+in `dist/game.js` and all models are embedded in `dist/assets.js`.
+
+**LAN co-op (2–4 players):**
+
+1. On one computer run:
+
+   ```bash
+   npm run lan
+   ```
+
+   This needs Node 18+ and no install step.
+2. Open the address it prints, then **MULTIPLAYER → CREATE PARTY**.
+3. Friends on the same network open the host's network address (or the invitation link) and choose **JOIN PARTY**
+   with the code.
+
+See `docs/MULTIPLAYER.md` for the rules, architecture, tests and limitations.
 
 ## Controls
 
@@ -71,7 +87,7 @@ npm test
 `npm run assets` rebuilds `assets/*.glb` and `dist/assets.js` from the source packs (network needed).
 `npm test` needs Playwright with a Chromium it can launch. `npm run perf` prints triangles and draw calls per map and
 preset (software GL in CI-like environments, so not a real-GPU frame rate); `npm run smoke` runs the real menu flow; `npm run pace` measures simulation frame times, allocation and
-frame-rate independence of movement; `npm run e2e` drives the real page end to end (menu → briefing → rendered-pixel check → missions played on foot → extraction →
+frame-rate independence of movement; `npm run servertest` and `npm run mptest` check the LAN server and real multi-browser co-op (see `docs/MULTIPLAYER.md`); `npm run e2e` drives the real page end to end (menu → briefing → rendered-pixel check → missions played on foot → extraction →
 replay → menu, every map / mission / length; see `docs/QA_V2_3_1.md`); `node tools/feel.cjs <label>` measures controls feel (acceleration, stops, aim
 sensitivity through transitions, stairs, mantle) at 30 / 60 / 120 / 144 Hz. Progress notes for contributors: `docs/V2_PROGRESS.md`, `docs/V2_1_PROGRESS.md`, `GAME_PLAN.md`.
 
