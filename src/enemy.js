@@ -304,7 +304,7 @@ export class Enemy {
     if (this.takeCover('defend', this.lkp, o, 7)) return true;
     this.release(); this.route = [[o.x, o.z]]; this.wi = 0; this.waitR = [4, 9]; this.goTo(o.x, o.z); this.set('PATROL'); return true;
   }
-  goAlarm() { const P = this.g.world.panel; this.release(); if (!this.goTo(P.x, P.z)) return false; this.holdPost = false; this.set('ALARM', 'run'); return true; }
+  goAlarm() { const P = this.g.world.panel, spot = this.spot; if (!this.goTo(P.x, P.z)) return false; this.spot = spot; this.release(); this.holdPost = false; this.set('ALARM', 'run'); return true; } // only leave cover when the panel is reachable
   // ---------- shooting ----------
   fire(suppress) {
     const G = this.g, P = G.player, pr = this.pr, ch = this.ch;
@@ -457,6 +457,7 @@ export class Enemy {
       }
       case 'COVER': {
         const s = this.spot, m = this.mode;
+        if (!s) { this.engage(true); break; } // lost the spot (e.g. released elsewhere): fight from here
         face = lookAt(this.hasLkp || this.holdPost ? this.lkp : V.set(s.x - s.nx * 5, 0, s.z - s.nz * 5));
         if (this.phase === 'hide') {
           this.crouch = !s.high;

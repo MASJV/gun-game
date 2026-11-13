@@ -167,6 +167,17 @@ The 24 `mptest` checks cover:
 - `mptest` skips 3D rendering in its tabs for speed (`G.skipRender`, test mode only). Rendering of teammates was
   checked separately in screenshots, and the single-player e2e suite checks rendered pixels.
 
+## Bugs found and fixed while building this
+
+- **Resume after a server restart:** the new server correctly answered "party gone", but the client stayed in a dead
+  lobby. It now ends the party and returns to the connect screen.
+- **Results screen:** with the co-op team table, the buttons fell off the bottom of short windows. Overlay boxes now
+  scroll.
+- **Guard AI, single-player too:** a guard sent to the alarm panel released its cover spot *before* checking that
+  the panel was reachable. If it was not, the guard stayed in COVER with no spot, and the next update threw. The
+  route is now checked first, and COVER recovers if its spot is ever missing. The `mptest` runs exposed this as an
+  intermittent host-loop error, which the V2.3.1 error panel caught.
+
 ## Known limitations
 
 - **No host migration**, and the authority lives in the leader's browser tab. If the leader's tab is in the

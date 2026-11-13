@@ -117,7 +117,7 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   // enemy rounds hit the client: the host's guard fires at B through the shared ballistic resolver
   const hurt = await A.evaluate(async () => {
     const G = window.__SP, rp = [...G.mp.players.values()][0], P0 = G.player, e = G.enemies.find((x) => !x.dead);
-    e.release(); e.pos.set(40, 0, 6); e.yaw = Math.atan2(-(rp.pos.x - e.pos.x), -(rp.pos.z - e.pos.z)); e.path = null; e.waitT = 1e9; e.percT = 1e9; e.sync(); e.ch.refresh();
+    e.release(); e.set('PATROL'); e.pos.set(40, 0, 6); e.yaw = Math.atan2(-(rp.pos.x - e.pos.x), -(rp.pos.z - e.pos.z)); e.path = null; e.waitT = 1e9; e.percT = 1e9; e.sync(); e.ch.refresh();
     const hp0 = rp.hp; let shots = 0;
     for (let k = 0; k < 30 && rp.hp > hp0 - 30; k++) { G.player = rp; e.seeBody = true; e.pd = 5; e.ammo = 30; if (e.fire(false)) shots++; G.player = P0; await new Promise((r) => setTimeout(r, 30)); }
     e.dead = true; e.hp = 0; e.ch.die(false); // out of the way for the next steps
@@ -143,7 +143,7 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   // grenade: B throws a frag at a guard; the host's explosion kills him on both screens
   const nadeTarget = await A.evaluate(() => {
     const G = window.__SP, rp = [...G.mp.players.values()][0], i = G.enemies.findIndex((e) => !e.dead), e = G.enemies[i];
-    e.release(); e.pos.set(40, 0, 3); e.path = null; e.waitT = 1e9; e.percT = 1e9; e.evade = () => false; e.sync(); e.ch.refresh();
+    e.release(); e.set('PATROL'); e.pos.set(40, 0, 3); e.path = null; e.waitT = 1e9; e.percT = 1e9; e.evade = () => false; e.sync(); e.ch.refresh();
     return i;
   });
   await wait(500);
