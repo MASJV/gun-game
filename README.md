@@ -49,6 +49,10 @@ Open `index.html` in a desktop browser (Chrome, Edge or Firefox). No server is n
 - **Performance & comfort:** Low / Medium / High presets, distance-based tree and animation detail, GPU-aware adaptive
   render scale (60 FPS or display-refresh target), raw mouse input, frame-rate-independent movement, and Comfort
   settings for camera motion (head bob, sprint FOV, shake; 0 % = off) and weapon sway. See `docs/SMOOTHNESS.md`.
+- **Controls (V2.3):** unsmoothed, unaccelerated mouse look; aim sensitivity follows the zoom exactly through every
+  ADS / scope transition; separate ADS, scope and vertical multipliers; smooth 4–10x wheel zoom; weighted weapon
+  inertia per weapon class (gun only, never the camera); soft acceleration and stops, slower backpedal, jump
+  buffering, smooth stairs and mantles. Settings → Controls has a reset button. See `docs/CONTROLS.md`.
 
 ## Develop
 
@@ -67,7 +71,8 @@ npm test
 `npm run assets` rebuilds `assets/*.glb` and `dist/assets.js` from the source packs (network needed).
 `npm test` needs Playwright with a Chromium it can launch. `npm run perf` prints triangles and draw calls per map and
 preset (software GL in CI-like environments, so not a real-GPU frame rate); `npm run smoke` runs the real menu flow; `npm run pace` measures simulation frame times, allocation and
-frame-rate independence of movement. Progress notes for contributors: `docs/V2_PROGRESS.md`, `docs/V2_1_PROGRESS.md`, `GAME_PLAN.md`.
+frame-rate independence of movement; `node tools/feel.cjs <label>` measures controls feel (acceleration, stops, aim
+sensitivity through transitions, stairs, mantle) at 30 / 60 / 120 / 144 Hz. Progress notes for contributors: `docs/V2_PROGRESS.md`, `docs/V2_1_PROGRESS.md`, `GAME_PLAN.md`.
 
 ## Credits
 

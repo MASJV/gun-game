@@ -1,6 +1,6 @@
 {
   "name": "shadow-protocol",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "description": "SHADOW PROTOCOL - single-player tactical FPS for the browser (Three.js)",
   "scripts": {
@@ -10,7 +10,8 @@
     "test": "node tools/test.cjs",
     "perf": "node tools/perf.cjs",
     "smoke": "node tools/smoke.cjs",
-    "pace": "node tools/pace.cjs"
+    "pace": "node tools/pace.cjs",
+    "feel": "node tools/feel.cjs"
   },
   "dependencies": {
     "three": "^0.187.0"
