@@ -65,7 +65,7 @@ const PROFILES = { default: {}, low: { quality: 'low', adaptive: false }, high: 
       return Math.hypot(tx - P.pos.x, tz - P.pos.z) < within + 0.6;
     };
     window.e2ePlay = () => {
-      const P = G.player, Mi = G.mission, R = { stages: Mi.def.stages.map((s) => s.kind), assists: 0, prompts: [], reached: [], log: [] };
+      const P = G.player, Mi = G.mission, R = { stages: Mi.def.stages.map((s) => s.kind), assists: 0, prompts: [], promptStage: [], reached: [], log: [] };
       R.enemies = G.enemies.filter((e) => !e.dead).length; R.civ = Mi.civ ? Mi.civ.kind : null;
       const p0 = P.pos.clone(); press('KeyW', true); step(0.8); press('KeyW', false); step(0.4); R.moved = +p0.distanceTo(P.pos).toFixed(2); // real key input moves the operator
       G.enemies.forEach((e) => { e.dead = true; e.found = true; e.ch.root.visible = false; });
@@ -75,13 +75,13 @@ const PROFILES = { default: {}, low: { quality: 'low', adaptive: false }, high: 
         if (s.civ) {
           const c = s.civRef; if (c.state === 'flee') step(25, () => c.state === 'flee');
           R.reached.push(walkTo(c.pos.x, c.pos.z, R, 1.6));
-          P.yaw = Math.atan2(-(c.pos.x - P.pos.x), -(c.pos.z - P.pos.z)); step(0.3); R.prompts.push(document.getElementById('prompt').textContent);
+          P.yaw = Math.atan2(-(c.pos.x - P.pos.x), -(c.pos.z - P.pos.z)); step(0.3); R.prompts.push(document.getElementById('prompt').textContent); R.promptStage.push(si);
           press('KeyE', true); step((s.hold || 0) + 0.6); press('KeyE', false); step(0.2); R.log.push(s.kind + ':' + c.state);
         } else {
           for (const it of Mi.items.filter((x) => x.stage === si && !x.taken)) {
             if (Mi.i !== si) break;
             const a = s.anchors[it.k].stand; R.reached.push(walkTo(a[0], a[1], R, 0.9));
-            P.yaw = Math.atan2(-(it.pos[0] - P.pos.x), -(it.pos[2] - P.pos.z)); P.pitch = -0.3; step(0.3); R.prompts.push(document.getElementById('prompt').textContent);
+            P.yaw = Math.atan2(-(it.pos[0] - P.pos.x), -(it.pos[2] - P.pos.z)); P.pitch = -0.3; step(0.3); R.prompts.push(document.getElementById('prompt').textContent); R.promptStage.push(si);
             press('KeyE', true); step((s.hold || 0) + 0.6); press('KeyE', false); step(0.2); R.log.push(s.kind + (Mi.i !== si ? ':done' : ':open'));
           }
         }
@@ -107,13 +107,24 @@ const PROFILES = { default: {}, low: { quality: 'low', adaptive: false }, high: 
     await p.click('#brgo'); await p.waitForFunction('window.__SP.state === "playing"', null, { timeout: 30000 });
     const st = await sceneStats(id.replace(/\//g, '_') + '_spawn');
     const cam = await p.evaluate(() => { const G = window.__SP, c = G.camera, P = G.player, e = G.mission.def.entry; return { view: [+(P.yaw - e.yaw).toFixed(3), +P.pitch.toFixed(3)], gateDropped: G.lookGate.dropped, finite: c.position.toArray().every(Number.isFinite) && Number.isFinite(c.fov), eyeOk: Math.abs(c.position.y - P.pos.y - P.eye) < 0.3, inScene: G.scene.children.length, hud: getComputedStyle(document.getElementById('hud')).display }; });
+    // pause (Esc releases the pointer) and RESUME: re-capturing the mouse must not turn the view either
+    let resume = null;
+    if (await p.evaluate(() => !!document.pointerLockElement)) {
+      const v0 = await p.evaluate(() => [window.__SP.player.yaw, window.__SP.player.pitch]);
+      // Esc: the browser releases the pointer (headless Chromium does not do that for a synthetic key, so release it the same way)
+      await p.evaluate(() => document.exitPointerLock()); await p.waitForFunction('window.__SP.state === "paused"', null, { timeout: 15000 }).catch(() => {});
+      await p.mouse.move(40, 330); await p.click('#resume', { timeout: 15000 }).catch(() => {}); await p.waitForFunction('window.__SP.state === "playing"', null, { timeout: 15000 }).catch(() => {});
+      const fr2 = await p.evaluate(() => window.__SP.frames); await p.waitForFunction((f) => window.__SP.frames >= f + 3, fr2, { timeout: 60000 });
+      const v1 = await p.evaluate(() => [window.__SP.player.yaw, window.__SP.player.pitch, window.__SP.state]);
+      resume = [+(v1[0] - v0[0]).toFixed(4), +(v1[1] - v0[1]).toFixed(4), v1[2]];
+    }
     // real keyboard: hold W for half a second of real frames
     const k0 = await p.evaluate(() => window.__SP.player.pos.toArray()); const fr = await p.evaluate(() => window.__SP.frames); await p.keyboard.down('KeyW'); await p.waitForFunction((f) => window.__SP.frames >= f + 6, fr, { timeout: 60000 }); await p.keyboard.up('KeyW');
     const k1 = await p.evaluate(() => window.__SP.player.pos.toArray()); const realMove = Math.hypot(k1[0] - k0[0], k1[2] - k0[2]);
-    check(`${id}: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves`, visible(brief) && visible(st) && cam.finite && cam.eyeOk && Math.abs(cam.view[0]) < 1e-3 && Math.abs(cam.view[1]) < 1e-3 && realMove > 0.2, { brief, spawn: st, cam, realMove: +realMove.toFixed(2) });
+    check(`${id}: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves`, visible(brief) && visible(st) && cam.finite && cam.eyeOk && Math.abs(cam.view[0]) < 1e-3 && Math.abs(cam.view[1]) < 1e-3 && realMove > 0.2 && (!resume || (resume[2] === 'playing' && Math.abs(resume[0]) < 1e-3 && Math.abs(resume[1]) < 1e-3)), { brief, spawn: st, cam, resume, realMove: +realMove.toFixed(2) });
     const R = await p.evaluate(() => window.e2ePlay());
     totals.assists += R.assists; if (R.state === 'won') totals.completed++;
-    const promptsOk = R.prompts.every((t) => t && t.length > 3);
+    const promptsOk = R.stages.every((k, i) => R.prompts.some((t, j) => R.promptStage[j] === i && t && t.length > 3)); // the HVT may run on the first approach
     check(`${id}: objective sequence [${R.stages.join(' → ')}] completed on foot, extraction won`, R.enemies > 0 && R.moved > 0.5 && promptsOk && R.complete && R.state === 'won' && /COMPLETE/.test(R.end) && (R.civ == null || R.civFollow < 9), { enemies: R.enemies, moved: R.moved, prompts: R.prompts, log: R.log, reached: R.reached, assists: R.assists, state: R.state, civFollow: R.civFollow });
     // end screen -> restart (same settings) renders again -> back to the menu
     if (R.state === 'won') {

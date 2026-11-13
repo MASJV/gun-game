@@ -316,7 +316,16 @@ function beginMission() { if (G.state !== 'brief') return; show(null); G.state =
 // mousemove (seen: -480, -356 counts). It arrives with pointerLockElement already set but BEFORE 'pointerlockchange',
 // so it spun the fresh operator about 60 deg and pitched him 45 deg into the black night sky after DEPLOY / RESUME.
 // Mouse look is ignored from the lock request until 80 ms after the lock is confirmed.
-const lookGate = (G.lookGate = { pending: false, lockedAt: -1e9, dropped: 0, open(now) { return !this.pending && now - this.lockedAt >= 80; } });
+// Judged by the event's creation time (ev.timeStamp), not when a slow frame finally dispatches it. The first event
+// after a lock is also dropped when it is an implausible single jump (> 200 counts): Chrome can attach the warp to the
+// user's first real movement, whenever that comes.
+const lookGate = (G.lookGate = { pending: false, lockedAt: -1e9, first: false, dropped: 0,
+  accept(ev) {
+    const t = ev.timeStamp || performance.now();
+    if (this.pending || t < this.lockedAt + 80) { this.dropped++; return false; }
+    if (this.first) { this.first = false; if (Math.abs(ev.movementX) + Math.abs(ev.movementY) > 200) { this.dropped++; return false; } }
+    return true;
+  } });
 function lock() {
   lookGate.pending = true; G.inp.mx = G.inp.my = 0;
   const fail = () => { $('phint').textContent = 'CLICK RESUME AGAIN TO RE-CAPTURE THE MOUSE'; };
@@ -605,7 +614,7 @@ addEventListener('keydown', (ev) => {
 addEventListener('keyup', (ev) => { G.inp.k[ev.code] = false; });
 addEventListener('blur', () => { G.inp.k = {}; G.inp.lmb = G.inp.rmb = false; });
 addEventListener('mousemove', (ev) => { if (G.state === 'playing' && (document.pointerLockElement === canvas || TEST)) {
-  if (!TEST && !lookGate.open(performance.now())) { lookGate.dropped++; return; }
+  if (!TEST && !lookGate.accept(ev)) return;
   if (!inFirst) inFirst = ev.timeStamp || performance.now(); G.inp.mx += ev.movementX; G.inp.my += ev.movementY; } });
 addEventListener('mousedown', (ev) => {
   if (G.state !== 'playing') return;
@@ -619,9 +628,9 @@ addEventListener('wheel', (ev) => { // scoped: adjust magnification; otherwise c
 }, { passive: false });
 addEventListener('contextmenu', (ev) => ev.preventDefault());
 document.addEventListener('pointerlockerror', () => { lookGate.pending = false; });
-document.addEventListener('pointerlockchange', () => {
+document.addEventListener('pointerlockchange', (ev) => {
   lookGate.pending = false;
-  if (document.pointerLockElement === canvas) { lookGate.lockedAt = performance.now(); G.inp.mx = G.inp.my = 0; if (G.state === 'paused') { G.state = 'playing'; show(null); last = performance.now(); } }
+  if (document.pointerLockElement === canvas) { lookGate.lockedAt = ev.timeStamp || performance.now(); lookGate.first = true; G.inp.mx = G.inp.my = 0; if (G.state === 'paused') { G.state = 'playing'; show(null); last = performance.now(); } }
   else if (G.state === 'playing' && !TEST) pause();
 });
 
