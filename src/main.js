@@ -622,7 +622,7 @@ function frame(now) {
   renderer.info.reset();
   try {
     if (G.state === 'menu') menuRender(dt);
-    else if (G.scene && !G.contextLost) {
+    else if (G.scene && !G.contextLost && !(TEST && G.skipRender)) { // skipRender: test-only, lets several headless clients run at full rate
       const q = P.gpuBegin();
       renderer.setViewport(0, 0, innerWidth, innerHeight);
       renderer.clear(); renderer.render(G.scene, G.camera);

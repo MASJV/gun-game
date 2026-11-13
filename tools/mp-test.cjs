@@ -29,6 +29,7 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
     await p.goto(URL); await p.waitForFunction('window.__SP && window.__SP.state === "menu"', null, { timeout: 120000 });
     await p.evaluate(() => {
       const G = window.__SP;
+      G.skipRender = true; // software GL in several tabs would crawl; rendering itself is covered by tools/e2e.cjs
       window.key = (c, d) => { G.inp.k[c] = d; };
       window.until = (fn, ms = 15000) => new Promise((res) => { const t0 = performance.now(); const tick = () => { let v; try { v = fn(); } catch (e) { v = false; } if (v || performance.now() - t0 > ms) res(v); else setTimeout(tick, 30); }; tick(); });
     });
@@ -73,6 +74,8 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   const see = async (p, q) => { const [a, rp] = await Promise.all([q.evaluate(() => window.__SP.player.pos.toArray()), p.evaluate(() => { const r = [...window.__SP.mp.players.values()][0]; return r && r.ch.root.visible ? r.ch.root.position.toArray() : null; })]); return rp ? Math.hypot(a[0] - rp[0], a[2] - rp[2]) : 99; };
   check('presence: each player sees the other’s character where that player really is', (await see(A, B)) < 0.6 && (await see(B, A)) < 0.6, [await see(A, B), await see(B, A)]);
   // B walks forward and turns: A sees it move smoothly (interpolated) to the new place
+  const fps = await Promise.all([A, B].map((p) => p.evaluate(async () => { const f0 = window.__SP.frames; await new Promise((r) => setTimeout(r, 1000)); return window.__SP.frames - f0; })));
+  console.log('client frame rates (headless):', fps);
   const b0 = await B.evaluate(() => window.__SP.player.pos.toArray());
   await B.evaluate(() => { key('KeyW', true); window.__SP.player.yaw += 0.6; });
   const track = await A.evaluate(async () => { const out = []; const t0 = performance.now(); while (performance.now() - t0 < 1500) { const r = [...window.__SP.mp.players.values()][0]; out.push([performance.now(), +r.ch.root.position.x.toFixed(3), +r.ch.root.position.z.toFixed(3)]); await new Promise((q) => setTimeout(q, 40)); } return out; });
@@ -84,6 +87,74 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   for (const [t, x, z] of track) { const d = Math.hypot(x - lx, z - lz); if (d > 1e-3) { maxJump = Math.max(maxJump, d / Math.max(0.04, (t - lastT) / 1000)); lastT = t; lx = x; lz = z; } }
   const moved = Math.hypot(b1[0][0] - b0[0], b1[0][2] - b0[2]);
   check('movement: B walks and turns; A sees B arrive at the same place and heading, never faster than a sprint (no teleporting)', moved > 0.5 && Math.hypot(aView[0][0] - b1[0][0], aView[0][2] - b1[0][2]) < 0.5 && Math.abs(aView[1] - b1[1]) < 0.05 && maxJump < 9, { moved: +moved.toFixed(2), err: +Math.hypot(aView[0][0] - b1[0][0], aView[0][2] - b1[0][2]).toFixed(3), maxApparentSpeed: +maxJump.toFixed(2) });
+
+  // --------------------------------------------------------------- shared combat (B is a client, A the host)
+  await A.evaluate(() => { window.__SP.mp.trustMoves = true; }); // the test places operators by hand
+  // stage the fights in the open east yard of the warehouse: B at (40, 12) facing north
+  const placeB = () => B.evaluate(() => { const P = window.__SP.player; P.pos.set(40, 0, 12); P.vel.set(0, 0, 0); P.yaw = 0; P.pitch = 0; });
+  await placeB(); await wait(400);
+  // host: park one guard in the open, unaware, 9 m in front of B
+  const target = await A.evaluate(() => {
+    const G = window.__SP, rp = [...G.mp.players.values()][0], i = G.enemies.findIndex((e) => !e.dead), e = G.enemies[i];
+    G.enemies.forEach((x, j) => { if (j !== i && !x.dead) { x.percT = 1e9; x.los = false; x.detect = 0; } });
+    e.release(); e.pos.set(40, 0, 3); e.yaw = e.baseYaw = Math.PI; e.path = null; e.waitT = 1e9; e.set('PATROL'); e.percT = 1e9; e.sync(); e.ch.refresh();
+    return i;
+  });
+  await wait(700);
+  const shot = await B.evaluate(async (i) => {
+    const G = window.__SP, P = G.player, e = G.enemies[i], h0 = G.stats.hits;
+    for (let k = 0; k < 40 && !e.dead; k++) {
+      const c = G.camera.position; P.yaw = Math.atan2(-(e.pos.x - c.x), -(e.pos.z - c.z)); P.pitch = Math.atan2(e.pos.y + 1.25 - c.y, Math.hypot(e.pos.x - c.x, e.pos.z - c.z)); P.rp = P.ry = 0;
+      G.inp.lmb = true; G.inp.lmbPressed = true; await new Promise((r) => setTimeout(r, 60)); G.inp.lmb = false; await new Promise((r) => setTimeout(r, 120));
+      if (P.slot.mag < 2) { P.reload(); await until(() => !P.reloading, 4000); }
+    }
+    await until(() => e.dead, 5000);
+    return { dead: e.dead, hits: G.stats.hits - h0, kills: G.stats.kills };
+  }, target);
+  const hostSide = await A.evaluate((i) => { const G = window.__SP, e = G.enemies[i]; return { dead: e.dead, hp: Math.round(e.hp), rej: G.mp.debug.rejected, last: G.mp.debug.last, rw: G.mp.debug.rewinds, kills: [...G.mp.scores.entries()] }; }, target);
+  check('combat: the client shoots a shared guard — the host applies the damage, the guard dies on both screens, the shooter gets the hit and the kill', shot.dead && hostSide.dead && shot.hits > 0 && shot.kills >= 1, { client: shot, host: hostSide });
+  // enemy rounds hit the client: the host's guard fires at B through the shared ballistic resolver
+  const hurt = await A.evaluate(async () => {
+    const G = window.__SP, rp = [...G.mp.players.values()][0], P0 = G.player, e = G.enemies.find((x) => !x.dead);
+    e.release(); e.pos.set(40, 0, 6); e.yaw = Math.atan2(-(rp.pos.x - e.pos.x), -(rp.pos.z - e.pos.z)); e.path = null; e.waitT = 1e9; e.percT = 1e9; e.sync(); e.ch.refresh();
+    const hp0 = rp.hp; let shots = 0;
+    for (let k = 0; k < 30 && rp.hp > hp0 - 30; k++) { G.player = rp; e.seeBody = true; e.pd = 5; e.ammo = 30; if (e.fire(false)) shots++; G.player = P0; await new Promise((r) => setTimeout(r, 30)); }
+    e.dead = true; e.hp = 0; e.ch.die(false); // out of the way for the next steps
+    return { hp0, hp: rp.hp, shots };
+  });
+  await wait(500);
+  const bHp = await B.evaluate(() => [window.__SP.player.hp, document.getElementById('hpn').textContent]);
+  check('combat: a guard’s rounds hit the client — the client’s health drops by exactly what the host recorded', hurt.hp < hurt.hp0 && Math.abs(bHp[0] - hurt.hp) < 0.6, { host: hurt, client: bHp });
+  // downed and revived: the host deals lethal damage; A walks up and holds E
+  await placeB(); await wait(300);
+  await A.evaluate(() => { const G = window.__SP, rp = [...G.mp.players.values()][0]; rp.damage(500, rp.pos, { name: 'test' }); });
+  await B.waitForFunction(() => window.__SP.player.downed === true, null, { timeout: 10000 }).catch(() => {});
+  const down = await B.evaluate(() => [window.__SP.player.downed, document.getElementById('prompt').textContent]);
+  const rev = await A.evaluate(async () => {
+    const G = window.__SP, rp = [...G.mp.players.values()][0], P = G.player; P.pos.set(rp.pos.x + 0.8, rp.pos.y, rp.pos.z); P.vel.set(0, 0, 0);
+    await new Promise((r) => setTimeout(r, 300)); const prompt = document.getElementById('prompt').textContent;
+    key('KeyE', true); await until(() => !rp.downed, 9000); key('KeyE', false);
+    return { prompt, downed: rp.downed, hp: rp.hp };
+  });
+  await B.waitForFunction(() => window.__SP.player.downed === false, null, { timeout: 10000 }).catch(() => {});
+  const up = await B.evaluate(() => [window.__SP.player.downed, Math.round(window.__SP.player.hp)]);
+  check('revive: lethal damage downs the client (not dead); a teammate holding E next to them revives them on both screens', down[0] && /DOWN/.test(down[1]) && /revive/i.test(rev.prompt) && !rev.downed && up[0] === false && up[1] === 35, { down, rev, up });
+  // grenade: B throws a frag at a guard; the host's explosion kills him on both screens
+  const nadeTarget = await A.evaluate(() => {
+    const G = window.__SP, rp = [...G.mp.players.values()][0], i = G.enemies.findIndex((e) => !e.dead), e = G.enemies[i];
+    e.release(); e.pos.set(40, 0, 3); e.path = null; e.waitT = 1e9; e.percT = 1e9; e.evade = () => false; e.sync(); e.ch.refresh();
+    return i;
+  });
+  await wait(500);
+  const nade = await B.evaluate(async (i) => {
+    const G = window.__SP, P = G.player, e = G.enemies[i]; P.pitch = 0.02; P.yaw = Math.atan2(-(e.pos.x - P.pos.x), -(e.pos.z - P.pos.z));
+    const inv0 = P.inv.frag; while (P.throwSel !== 'frag') P.cycleThrow(); P.startUse('throw');
+    await until(() => G.gren.list.length > 0, 3000); const seen = G.gren.list.length;
+    await until(() => e.dead, 8000); await until(() => G.gren.list.length === 0, 4000);
+    await until(() => G.mp.lastBoom, 6000); return { inv: inv0 - P.inv.frag, seen, boom: G.mp.lastBoom, dead: e.dead, left: G.gren.list.length };
+  }, nadeTarget);
+  const nadeHost = await A.evaluate((i) => ({ dead: window.__SP.enemies[i].dead, hp: Math.round(window.__SP.enemies[i].hp), boom: window.__SP.mp.lastBoom, left: window.__SP.gren.list.length }), nadeTarget);
+  check('grenade: the client throws a frag — the host simulates it, it explodes at the same spot on both screens, the guard takes blast damage (same alive/dead state everywhere), no copies left', nade.inv === 1 && nade.seen >= 1 && nade.left === 0 && nadeHost.left === 0 && nadeHost.hp < 100 && nade.dead === nadeHost.dead && nade.boom && nadeHost.boom && Math.hypot(nade.boom[0] - nadeHost.boom[0], nade.boom[2] - nadeHost.boom[2]) < 0.05, { client: nade, host: nadeHost });
 
   console.log('\nerrors:', errs.length ? errs.slice(0, 6) : 'none');
   const failed = results.filter((r) => !r.ok).length; console.log(`\n${results.length - failed}/${results.length} multiplayer checks passed`);

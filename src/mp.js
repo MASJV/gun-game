@@ -330,7 +330,7 @@ export function createSession(G, H, L, start) {
     G.onSpawnEnemy = (e) => { if (S.phase === 'live') queue({ k: 'sp', i: G.enemies.indexOf(e), x: r2(e.pos.x), z: r2(e.pos.z), ty: e.typeId, d: e.duty }); };
   }
   S.enemyFired = (e, a, b, r) => { queue({ k: 'ef', i: G.enemies.indexOf(e), a: [r2(a.x), r2(a.y), r2(a.z)], b: [r2(b.x), r2(b.y), r2(b.z)], h: r.kind === 'world' ? 0 : r.kind === 'player' ? 1 : 2, n: r.wh ? [r.wh.nx, r.wh.ny, r.wh.nz] : null, m: r.wh && r.wh.c ? r.wh.c.mat : null }); };
-  S.onBoom = (n) => { queue({ k: 'boom', id: n.id || -1, ty: n.type, p: [r2(n.pos.x), r2(n.pos.y), r2(n.pos.z)], by: n.ownerId == null ? -1 : n.ownerId }); };
+  S.onBoom = (n) => { S.lastBoom = [n.pos.x, n.pos.y, n.pos.z]; queue({ k: 'boom', id: n.id || -1, ty: n.type, p: [r2(n.pos.x), r2(n.pos.y), r2(n.pos.z)], by: n.ownerId == null ? -1 : n.ownerId }); };
   S.onNade = (n, by, q) => { n.id = S.nadeId++; n.ownerId = by; queue({ k: 'nade', id: n.id, ty: n.type, o: [r2(n.pos.x), r2(n.pos.y), r2(n.pos.z)], v: [r2(n.vel.x), r2(n.vel.y), r2(n.vel.z)], by, q }); };
 
   // ------------------------------------------------------------------ local shots (both roles)
@@ -497,7 +497,7 @@ export function createSession(G, H, L, start) {
         const P = local(); x.pd = Math.hypot(x.pos.x - P.pos.x, x.pos.z - P.pos.z); G.enemyShotSound(x); if (e.h !== 1) { const d = b.clone().sub(a).normalize(); G.nearMiss(a.x, a.y, a.z, d.x, d.y, d.z); } return; }
       case 'kill': { const x = G.enemies[e.i]; if (x && !x.dead) { x.dead = true; x.ch.die(false); } return; }
       case 'nade': if (e.by === meId) { const n = G.gren.list.find((g) => g.q === e.q && g.visual && !g.id); if (n) n.id = e.id; } else if (v3ok(e.o) && v3ok(e.v)) { G.gren.spawn(e.ty, new THREE.Vector3(...e.o), new THREE.Vector3(...e.v), 'remote'); const n = G.gren.list[G.gren.list.length - 1]; n.visual = true; n.id = e.id; } return;
-      case 'boom': { if (!v3ok(e.p)) return; const n = G.gren.list.find((g) => g.id === e.id && e.id > 0); if (n) { G.scene.remove(n.mesh); G.gren.list.splice(G.gren.list.indexOf(n), 1); }
+      case 'boom': { if (!v3ok(e.p)) return; S.lastBoom = e.p; const n = G.gren.list.find((g) => g.id === e.id && e.id > 0); if (n) { G.scene.remove(n.mesh); G.gren.list.splice(G.gren.list.indexOf(n), 1); }
         G.gren.detonate({ type: e.ty, pos: new THREE.Vector3(...e.p), owner: e.by === meId ? 'player' : 'remote' }); return; }
       case 'toast': H.toast(e.m, e.d || 3); return;
       case 'say': { const P = local(); if (Math.hypot(e.x - P.pos.x, e.z - P.pos.z) <= 45) H.radio(e.m); return; }
