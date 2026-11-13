@@ -34,7 +34,7 @@ const { chromium } = require('playwright');
       const wall = performance.now() - t0, h1 = performance.memory.usedJSHeapSize; G.inp.k.KeyW = false;
       const s = Array.from(tot).sort((a, b) => a - b), q = (x) => s[Math.min(N - 1, Math.floor(x * N))];
       const worst = frames.map((f, i) => [i, ...f]).sort((a, b) => b[1] - a[1]).slice(0, 4).map((f) => ({ frame: f[0], total: +f[1].toFixed(2), player: +f[2].toFixed(2), ai: +f[3].toFixed(2), world: +f[4].toFixed(2), mission: +f[5].toFixed(2), hud: +f[6].toFixed(2), rays: f[7] }));
-      return { mean: +(s.reduce((a, b) => a + b, 0) / N).toFixed(3), p50: +q(0.5).toFixed(3), p99: +q(0.99).toFixed(3), max: +s[N - 1].toFixed(2), over4ms: s.filter((v) => v > 4).length, raysPerFrame: Math.round(rays / N), boxTestsPerFrame: Math.round(boxes / N), allocKBperFrame: +((h1 - h0) / N / 1024).toFixed(1), worst, alive: G.enemies.filter((e) => !e.dead).length };
+      return { mean: +(s.reduce((a, b) => a + b, 0) / N).toFixed(3), playerMs: +(frames.reduce((a, f) => a + f[1], 0) / N).toFixed(4), p50: +q(0.5).toFixed(3), p99: +q(0.99).toFixed(3), max: +s[N - 1].toFixed(2), over4ms: s.filter((v) => v > 4).length, raysPerFrame: Math.round(rays / N), boxTestsPerFrame: Math.round(boxes / N), allocKBperFrame: +((h1 - h0) / N / 1024).toFixed(1), worst, alive: G.enemies.filter((e) => !e.dead).length };
     }, [map, ai, pos, fight]);
     out[name] = r; console.log(name.padEnd(16), JSON.stringify({ ...r, worst: undefined })); console.log('   worst frames:', JSON.stringify(r.worst));
   }

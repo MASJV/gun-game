@@ -1,0 +1,191 @@
+{
+ "forest-patrol": {
+  "mean": 0.165,
+  "playerMs": 0.0204,
+  "p50": 0.1,
+  "p99": 0.8,
+  "max": 4.7,
+  "over4ms": 1,
+  "raysPerFrame": 2,
+  "boxTestsPerFrame": 6,
+  "allocKBperFrame": 30.2,
+  "worst": [
+   {
+    "frame": 331,
+    "total": 4.7,
+    "player": 0,
+    "ai": 0.2,
+    "world": 0,
+    "mission": 0,
+    "hud": 4.5,
+    "rays": 2
+   },
+   {
+    "frame": 1672,
+    "total": 3.8,
+    "player": 0,
+    "ai": 3.5,
+    "world": 0,
+    "mission": 0.1,
+    "hud": 0.2,
+    "rays": 16
+   },
+   {
+    "frame": 1256,
+    "total": 2.2,
+    "player": 0,
+    "ai": 2,
+    "world": 0.1,
+    "mission": 0,
+    "hud": 0.1,
+    "rays": 4
+   },
+   {
+    "frame": 178,
+    "total": 2,
+    "player": 0,
+    "ai": 1.8,
+    "world": 0,
+    "mission": 0.1,
+    "hud": 0.1,
+    "rays": 2
+   }
+  ],
+  "alive": 10
+ },
+ "forest-fight": {
+  "mean": 0.527,
+  "playerMs": 0.0259,
+  "p50": 0.3,
+  "p99": 4.7,
+  "max": 8.4,
+  "over4ms": 30,
+  "raysPerFrame": 4,
+  "boxTestsPerFrame": 19,
+  "allocKBperFrame": 53.8,
+  "worst": [
+   {
+    "frame": 1587,
+    "total": 8.4,
+    "player": 0,
+    "ai": 0.3,
+    "world": 0,
+    "mission": 0,
+    "hud": 8.1,
+    "rays": 2
+   },
+   {
+    "frame": 1082,
+    "total": 8.1,
+    "player": 0,
+    "ai": 8,
+    "world": 0,
+    "mission": 0.1,
+    "hud": 0,
+    "rays": 3
+   },
+   {
+    "frame": 902,
+    "total": 6.9,
+    "player": 0,
+    "ai": 6.8,
+    "world": 0,
+    "mission": 0.1,
+    "hud": 0,
+    "rays": 2
+   },
+   {
+    "frame": 1466,
+    "total": 6.8,
+    "player": 0.1,
+    "ai": 6.6,
+    "world": 0,
+    "mission": 0,
+    "hud": 0.1,
+    "rays": 13
+   }
+  ],
+  "alive": 13
+ },
+ "warehouse-fight": {
+  "mean": 0.331,
+  "playerMs": 0.0198,
+  "p50": 0.3,
+  "p99": 1.6,
+  "max": 7.7,
+  "over4ms": 5,
+  "raysPerFrame": 5,
+  "boxTestsPerFrame": 18,
+  "allocKBperFrame": 46.3,
+  "worst": [
+   {
+    "frame": 998,
+    "total": 7.7,
+    "player": 0,
+    "ai": 7.6,
+    "world": 0,
+    "mission": 0.1,
+    "hud": 0,
+    "rays": 2
+   },
+   {
+    "frame": 448,
+    "total": 4.8,
+    "player": 0.1,
+    "ai": 4.5,
+    "world": 0,
+    "mission": 0.2,
+    "hud": 0,
+    "rays": 2
+   },
+   {
+    "frame": 1770,
+    "total": 4.4,
+    "player": 0,
+    "ai": 4.3,
+    "world": 0,
+    "mission": 0,
+    "hud": 0.1,
+    "rays": 5
+   },
+   {
+    "frame": 1534,
+    "total": 4.4,
+    "player": 0,
+    "ai": 4.4,
+    "world": 0,
+    "mission": 0,
+    "hud": 0,
+    "rays": 4
+   }
+  ],
+  "alive": 13
+ },
+ "control": {
+  "p50": 0.1,
+  "p99": 0.3,
+  "max": 6.6,
+  "over4ms": 2,
+  "sink": true
+ },
+ "movement": {
+  "30": {
+   "walk1s": 4.205,
+   "stopDist": 0.179,
+   "jumpPeak": 1.035,
+   "airTime": 0.6
+  },
+  "60": {
+   "walk1s": 4.205,
+   "stopDist": 0.179,
+   "jumpPeak": 1.037,
+   "airTime": 0.617
+  },
+  "144": {
+   "walk1s": 4.205,
+   "stopDist": 0.179,
+   "jumpPeak": 1.037,
+   "airTime": 0.625
+  }
+ }
+}

@@ -612,6 +612,98 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('rendering: shadow frustum is snapped to whole shadow-map texels', o.snap[0] && o.snap[1], o.snap);
   });
 
+  await run('controls', async () => {
+    // ---- aim: hip / ADS / scope sensitivity, transitions, multipliers, vertical, variable zoom, weapon-camera alignment
+    await start('warehouse', 'tactical', { primary: 'sniper', secondary: 'pistol' });
+    const a = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, cam = G.camera, o = {}; calm(); G.enemies.forEach((e) => { e.dead = true; e.ch.root.visible = false; });
+      const halfTan = () => Math.tan((cam.fov * Math.PI) / 360);
+      // degrees turned per count, normalised by the on-screen scale: constant on every frame of an ADS transition
+      const transition = (frames) => { const r = []; for (let i = 0; i < frames; i++) { const y0 = P.yaw; G.inp.mx = 10; G.step(1 / 60); r.push((y0 - P.yaw) / 10 / halfTan()); } return r; };
+      const spread = (r) => (Math.max(...r) - Math.min(...r)) / Math.max(...r);
+      P.pos.set(34, 0, 0); P.yaw = 0; P.pitch = 0; sim(0.3);
+      G.inp.rmb = true; const inS = transition(30); G.inp.rmb = false; const outS = transition(30);
+      o.scopeMismatch = +Math.max(spread(inS), spread(outS)).toFixed(5);
+      // 10x vs 4x: same normalised rate (sensitivity follows magnification); wheel steps ease, never jump
+      G.inp.rmb = true; sim(0.6); for (let i = 0; i < 40; i++) P.zoomStep(-1); sim(0.5); const r4 = transition(3)[2];
+      const f0 = cam.fov; for (let i = 0; i < 40; i++) P.zoomStep(1); let maxJump = 0, last = cam.fov; for (let i = 0; i < 30; i++) { G.step(1 / 60); maxJump = Math.max(maxJump, Math.abs(cam.fov - last)); last = cam.fov; } const r10 = transition(3)[2];
+      o.zoom = [+(r4 / r10).toFixed(4), +(maxJump / Math.abs(f0 - cam.fov)).toFixed(3), +(last - 2 * Math.atan(Math.tan((G.fov * Math.PI) / 360) / 10) * 180 / Math.PI).toFixed(3)];
+      // scoped multiplier only affects scoped aim; vertical multiplier only affects pitch
+      G.sensScope = 0.5; const half = transition(3)[2]; G.sensScope = 1; o.scopeMult = +(half / r10).toFixed(4);
+      G.inp.rmb = false; sim(0.6); const hip = transition(3)[2]; G.sensScope = 0.5; const hip2 = transition(3)[2]; G.sensScope = 1; o.hipUnaffected = Math.abs(hip - hip2) < 1e-9;
+      G.sensY = 0.5; P.pitch = 0; G.inp.my = 100; const yaw0 = P.yaw; G.step(1 / 60); o.vert = [+(-P.pitch / (100 * 0.0022 * G.sens)).toFixed(4), P.yaw === yaw0]; G.sensY = 1; P.pitch = 0;
+      // ADS (iron sights, pistol) uses the ADS multiplier, and its transition is seamless too
+      P.switchTo(1); sim(0.8); G.inp.rmb = true; const inI = transition(20); o.ironMismatch = +spread(inI).toFixed(5); const full = transition(3)[2]; G.sensAds = 1.5; const fast = transition(3)[2]; G.sensAds = 1; o.adsMult = +(fast / full).toFixed(4);
+      // weapon-camera alignment: aimed down sights after a flick, the bullet direction equals the camera axis
+      G.inp.mx = 250; G.inp.my = -80; G.step(1 / 60); const d = new cam.position.constructor(); cam.getWorldDirection(d); o.align = +(1 - d.dot(P.fwd)).toExponential(2); G.inp.rmb = false; sim(0.4);
+      return o;
+    });
+    check('aim: sensitivity is seamless through ADS / scope transitions (rate follows the eased FOV exactly)', a.scopeMismatch < 1e-3 && a.ironMismatch < 1e-3, [a.scopeMismatch, a.ironMismatch]);
+    check('aim: variable 4-10x scope keeps the same on-screen rate; wheel steps ease without jumps and settle on true magnification', Math.abs(a.zoom[0] - 1) < 0.01 && a.zoom[1] < 0.4 && Math.abs(a.zoom[2]) < 0.05, a.zoom);
+    check('aim: ADS and scoped multipliers apply only to their mode; vertical multiplier only to pitch', Math.abs(a.scopeMult - 0.5) < 0.01 && a.hipUnaffected && Math.abs(a.adsMult - 1.5) < 0.01 && Math.abs(a.vert[0] - 0.5) < 0.01 && a.vert[1], a);
+    check('aim: after a flick while aiming, the shot direction is the camera axis', a.align < 1e-6, a.align);
+
+    // ---- locomotion at 30 / 60 / 120 / 144 Hz
+    await start('warehouse', 'tactical', { primary: 'm4' });
+    const L = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, K = G.inp.k, cam = G.camera, R = {}; calm(); G.enemies.forEach((e) => { e.dead = true; e.ch.root.visible = false; });
+      const keys = (o) => { for (const c of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ControlLeft', 'Space']) K[c] = !!o[c]; };
+      const reset = (x, z, yaw = 0, y = 0) => { keys({}); P.pos.set(x, y, z); P.vel.set(0, 0, 0); P.yaw = yaw; P.pitch = 0; P.crouchToggle = false; P.mantle = null; for (let i = 0; i < 30; i++) G.step(1 / 60); };
+      const walkV = 4.5 * P.w.move;
+      for (const hz of [30, 60, 120, 144]) {
+        const dt = 1 / hz, run = (sec, fn) => { for (let i = 0; i < Math.round(sec * hz); i++) { if (fn && fn(i * dt) === false) break; G.step(dt); } }, r = {};
+        reset(34, 0); keys({ KeyW: 1 }); let t90 = -1; run(1, (t) => { if (t90 < 0 && P.speed >= 0.9 * walkV) t90 = t + dt; }); r.t90 = t90; r.walk = P.speed;
+        keys({}); const z0 = P.pos.z; let tS = -1; run(1, (t) => { if (tS < 0 && P.speed < 0.05) tS = t; }); r.stop = z0 - P.pos.z; r.tStop = tS;
+        reset(34, 0); keys({ KeyW: 1, ShiftLeft: 1 }); let ts = -1; run(1.2, (t) => { if (ts < 0 && P.speed > 6.0) ts = t; }); r.sprint = P.speed; r.tSprint = ts; keys({ KeyW: 1 }); run(0.6); r.sprintOff = P.speed;
+        reset(34, 0, Math.PI); keys({ KeyS: 1 }); run(1); r.back = P.speed;
+        reset(34, 0); keys({ KeyD: 1 }); run(0.6); keys({ KeyA: 1 }); let tr = -1; const sg = Math.sign(P.vel.x); run(0.6, (t) => { if (tr < 0 && Math.sign(P.vel.x) === -sg && P.speed > 0.85 * walkV * 0.92) tr = t; }); r.strafeRev = tr;
+        reset(34, 0); keys({ KeyW: 1, KeyD: 1 }); run(1); r.diag = P.speed;
+        reset(34, 0); G.inp.jump = true; let pk = 0; run(1.2, () => { pk = Math.max(pk, P.pos.y); }); r.jump = pk;
+        reset(34, 0); G.inp.jump = true; keys({ KeyD: 1 }); run(0.5); r.air = Math.abs(P.pos.x - 34); keys({});
+        reset(34, 0); keys({ ControlLeft: 1 }); let tc = -1; run(0.6, (t) => { if (tc < 0 && P.eye < 1.062) tc = t; }); r.crouch = tc; keys({}); run(0.6); r.stand = P.eye;
+        // viewmodel inertia from a turn, then back to rest
+        reset(34, 0); let sw = 0; run(0.25, () => { sw = Math.max(sw, Math.abs(P.vm.ry)); G.inp.mx = 3600 * dt; }); run(1, () => { G.inp.mx = 0; }); r.sway = sw; r.swayRest = Math.abs(P.vm.ry);
+        // mantle onto the 1 m dock: duration, smooth camera, keeps moving
+        reset(12, 18.6, Math.PI); keys({ KeyW: 1, Space: 1 }); let st = -1, tm = -1, mx = 0, ex = -1; const lc = cam.position.clone(); run(2, (t) => { if (st < 0 && P.mantle) st = t; if (tm >= 0 && ex < 0) ex = P.speed; if (st >= 0 && tm < 0 && !P.mantle) tm = t - st; const c = cam.position; if (st >= 0 && tm < 0) mx = Math.max(mx, c.distanceTo(lc) * hz / 60); lc.copy(c); }); r.mantle = [tm, P.pos.y, ex, mx]; keys({});
+        for (const k in r) r[k] = Array.isArray(r[k]) ? r[k].map((v) => +v.toFixed(3)) : +r[k].toFixed(3);
+        R[hz] = r;
+      }
+      // stairs: the camera rises smoothly while the body steps up
+      reset(4.6, 22.5, -Math.PI / 2); keys({ KeyW: 1 }); let ms = 0, ly = cam.position.y; for (let i = 0; i < 150; i++) { G.step(1 / 60); ms = Math.max(ms, Math.abs(cam.position.y - ly)); ly = cam.position.y; } keys({}); R.stairs = [+ms.toFixed(3), +P.pos.y.toFixed(2)];
+      // jump buffer: Space pressed just before landing still jumps; coyote time: just after walking off a ledge too
+      reset(34, 0); G.inp.jump = true; let pressed = false, second = 0, down = false; for (let i = 0; i < 120; i++) { G.step(1 / 60); if (P.vel.y < 0) down = true; if (down && !pressed && P.pos.y < 0.25) { G.inp.jump = true; pressed = true; } if (pressed && P.vel.y > 4) second = 1; } R.buffer = second;
+      const ledge = (delay) => { reset(12, 20.5, 0, 1.2); const onTop = P.pos.y; keys({ KeyW: 1 }); let off = -1; for (let i = 0; i < 120; i++) { G.step(1 / 60); if (off < 0 && !P.grounded) off = i; if (off >= 0 && i === off + delay) { G.inp.jump = true; keys({}); } if (off >= 0 && i === off + delay + 3) return [+onTop.toFixed(2), P.vel.y > 2 ? 1 : 0]; } keys({}); return [+onTop.toFixed(2), -1]; };
+      R.coyote = [ledge(3), ledge(14)];
+      // wall pushback: the gun pulls back against a wall, not in the open
+      reset(34, 0); R.open = +P.wallPush.toFixed(3); reset(22, 0, Math.PI / 2); keys({ KeyW: 1 }); for (let i = 0; i < 90; i++) G.step(1 / 60); keys({}); R.wall = +P.wallPush.toFixed(3);
+      return R;
+    });
+    const hzs = [30, 60, 120, 144], col = (k, i) => hzs.map((h) => (i == null ? L[h][k] : L[h][k][i])), rng = (v) => Math.max(...v) - Math.min(...v);
+    const l60 = L[60];
+    check('locomotion: quick start (~0.1 s to 90 %) and short, soft stop at every frame rate', col('t90').every((t) => t > 0 && t <= 0.14) && l60.t90 <= 0.11 && rng(col('stop')) < 0.01 && l60.stop > 0.12 && l60.stop < 0.3 && col('tStop').every((t) => t > 0 && t < 0.2), hzs.map((h) => [L[h].t90, L[h].stop, L[h].tStop]));
+    check('locomotion: walk / sprint / backpedal / diagonal speeds identical across 30-144 Hz; backpedal slower, no diagonal boost', rng(col('walk')) < 0.01 && rng(col('sprint')) < 0.01 && rng(col('back')) < 0.01 && l60.back < 0.85 * l60.walk && l60.back > 0.65 * l60.walk && l60.diag <= l60.walk + 1e-3 && rng(col('diag')) < 0.01, hzs.map((h) => [L[h].walk, L[h].sprint, L[h].back, L[h].diag]));
+    check('locomotion: sprint ramps in and out smoothly; strafe reversal is quick', col('tSprint').every((t) => t > 0.15 && t < 0.6) && rng(col('tSprint')) < 0.04 && Math.abs(l60.sprintOff - l60.walk) < 0.05 && col('strafeRev').every((t) => t > 0 && t < 0.2), hzs.map((h) => [L[h].tSprint, L[h].sprintOff, L[h].strafeRev]));
+    check('locomotion: jump height and air control match across frame rates', rng(col('jump')) < 0.01 && Math.abs(l60.jump - 1.037) < 0.02 && rng(col('air')) < 0.05 && l60.air > 0.5 && l60.air < 2, hzs.map((h) => [L[h].jump, L[h].air]));
+    check('locomotion: crouch transition takes the same time at every frame rate and stands back up', rng(col('crouch')) < 0.04 && col('stand').every((e) => e > 1.6), hzs.map((h) => [L[h].crouch, L[h].stand]));
+    check('mantle: same duration at every frame rate, smooth camera, keeps forward momentum', col('mantle', 0).every((t) => t > 0.3 && t < 0.6) && rng(col('mantle', 0)) < 0.04 && col('mantle', 1).every((y) => Math.abs(y - 1) < 0.05) && col('mantle', 2).every((v) => v > 2) && col('mantle', 3).every((m) => m < 0.1), hzs.map((h) => L[h].mantle));
+    check('stairs: camera rises smoothly (no per-step snap)', L.stairs[0] < 0.08 && L.stairs[1] > 0.5, L.stairs);
+    check('jump: buffered press before landing and coyote time after a ledge both jump; late press does not', L.buffer === 1 && L.coyote[0][1] === 1 && L.coyote[1][1] !== 1 && L.coyote[0][0] > 0.9, [L.buffer, L.coyote]);
+    check('viewmodel: turn inertia is frame-rate independent, bounded and returns to rest; gun pulls back at walls', rng(col('sway')) < 0.15 * l60.sway && l60.sway > 0.02 && l60.sway < 0.15 && col('swayRest').every((v) => v < 0.005) && L.open < 0.01 && L.wall > 0.3, [col('sway'), L.open, L.wall]);
+
+    // ---- comfort: Camera Motion 0 removes bob, landing dip and sprint FOV; head bob and sprint FOV have their own switches
+    const c = await p.evaluate(() => {
+      const G = window.__SP, P = G.player, cam = G.camera, K = G.inp.k, o = {};
+      const walkBob = () => { P.pos.set(34, 0, 0); P.vel.set(0, 0, 0); P.yaw = 0; K.KeyW = true; let lo = 9, hi = -9; for (let i = 0; i < 120; i++) { G.step(1 / 60); if (i > 30) { lo = Math.min(lo, cam.position.y); hi = Math.max(hi, cam.position.y); } } K.KeyW = false; G.step(0.4); return +(hi - lo).toFixed(4); };
+      const land = () => { P.pos.set(34, 3, 0); P.vel.set(0, 0, 0); let lo = 9; for (let i = 0; i < 90; i++) { G.step(1 / 60); if (P.grounded) lo = Math.min(lo, cam.position.y - P.pos.y); } return +(P.eye - lo).toFixed(4); };
+      const sprint = () => { P.pos.set(34, 0, 0); P.yaw = 0; K.KeyW = K.ShiftLeft = true; for (let i = 0; i < 60; i++) G.step(1 / 60); const f = cam.fov - G.fov; K.KeyW = K.ShiftLeft = false; G.step(0.5); return +f.toFixed(2); };
+      G.camMotion = 0; o.off = [walkBob(), land(), sprint()];
+      G.camMotion = 1; o.on = [walkBob(), land(), sprint()];
+      G.headBob = 0; G.sprintFov = false; o.indiv = [walkBob(), sprint()]; G.headBob = 1; G.sprintFov = true; G.camMotion = 0.5;
+      return o;
+    });
+    check('comfort: Camera Motion 0 % removes bob, landing dip and sprint FOV; head bob and sprint FOV switch off individually', c.off.every((v) => Math.abs(v) < 0.002) && c.on.every((v) => v > 0.005) && c.indiv[0] < 0.002 && c.indiv[1] === 0, c);
+  });
+
   await run('feedback', async () => {
     await start('warehouse', 'tactical', { primary: 'ak' });
     const o = await p.evaluate(() => {
