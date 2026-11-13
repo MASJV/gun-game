@@ -30,8 +30,6 @@ const fatal = (title, detail, canMenu) => {
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, context: GLCTX || undefined, antialias: true, powerPreference: 'high-performance' }); }
 catch (e) { fatal('WEBGL IS NOT AVAILABLE', 'The browser could not create a WebGL context (' + e.message + '). Enable hardware acceleration or try another browser.', false); throw e; }
-G.renderer = renderer; // read by tests and tools
-G.KITS_DEF = KITS; G.WEAPONS = WEAPONS; G.WEAPONS_DEF = Object.keys(WEAPONS).map((id) => ({ id, slot: WEAPONS[id].slot, melee: !!WEAPONS[id].melee, optics: WEAPONS[id].optics || ['iron'], muzzle: !!WEAPONS[id].muzzle, grip: !!WEAPONS[id].grip, laser: !!WEAPONS[id].laser }));
 renderer.debug.onShaderError = (gl, program, vs, fs) => {
   const log = (gl.getProgramInfoLog(program) || '') + ' ' + (gl.getShaderInfoLog(fs) || '') + ' ' + (gl.getShaderInfoLog(vs) || '');
   console.error('SHADER ERROR', log.trim().slice(0, 800)); G.renderErrors = (G.renderErrors || 0) + 1;
@@ -52,6 +50,8 @@ const G = {
 };
 G.camera.rotation.order = 'YXZ';
 window.__SP = G; window.__rayBoxes = rayBoxes; window.__SPrenderer = renderer;
+G.renderer = renderer; // read by tests and tools
+G.KITS_DEF = KITS; G.WEAPONS = WEAPONS; G.WEAPONS_DEF = Object.keys(WEAPONS).map((id) => ({ id, slot: WEAPONS[id].slot, melee: !!WEAPONS[id].melee, optics: WEAPONS[id].optics || ['iron'], muzzle: !!WEAPONS[id].muzzle, grip: !!WEAPONS[id].grip, laser: !!WEAPONS[id].laser }));
 G.debugRender = () => { // used by the perf probe in tools/: one synchronous frame, GPU flushed
   const t0 = performance.now(), gl = renderer.getContext(); renderer.info.autoReset = false; renderer.info.reset();
   renderer.setViewport(0, 0, innerWidth, innerHeight); renderer.clear(); renderer.render(G.scene, G.camera); renderer.clearDepth(); renderer.render(G.wscene, G.wcam);
