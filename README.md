@@ -71,7 +71,8 @@ npm test
 `npm run assets` rebuilds `assets/*.glb` and `dist/assets.js` from the source packs (network needed).
 `npm test` needs Playwright with a Chromium it can launch. `npm run perf` prints triangles and draw calls per map and
 preset (software GL in CI-like environments, so not a real-GPU frame rate); `npm run smoke` runs the real menu flow; `npm run pace` measures simulation frame times, allocation and
-frame-rate independence of movement; `node tools/feel.cjs <label>` measures controls feel (acceleration, stops, aim
+frame-rate independence of movement; `npm run e2e` drives the real page end to end (menu → briefing → rendered-pixel check → missions played on foot → extraction →
+replay → menu, every map / mission / length; see `docs/QA_V2_3_1.md`); `node tools/feel.cjs <label>` measures controls feel (acceleration, stops, aim
 sensitivity through transitions, stairs, mantle) at 30 / 60 / 120 / 144 Hz. Progress notes for contributors: `docs/V2_PROGRESS.md`, `docs/V2_1_PROGRESS.md`, `GAME_PLAN.md`.
 
 ## Credits
