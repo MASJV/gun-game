@@ -21,7 +21,10 @@ export function makeBallistics(G) {
       const h = c.ch.rayHit(o, d, r.d, G.frame);
       if (h) { r.d = h.d; r.kind = 'civ'; r.e = c; r.part = h.part; r.mult = h.mult; }
     }
-    if (shooter !== 'player' && !G.player.dead) {
+    if (shooter !== 'player' && G.mp && G.mp.host) { // co-op host: every standing operator can be hit
+      const ph = G.mp.traceTeam(o, d, r.d, null);
+      if (ph) { r.d = ph.d; r.kind = 'player'; r.e = null; r.player = ph.p; }
+    } else if (shooter !== 'player' && !G.player.dead) {
       const ph = rayBoxes(G.playerBox(), o.x, o.y, o.z, d.x, d.y, d.z, r.d, 'bullet');
       if (ph) { r.d = ph.d; r.kind = 'player'; r.e = null; }
     }

@@ -63,9 +63,25 @@ export class Player {
     this.reloading = true; this.relT = this.relDur = s.st.reload; this.relIn = false; this.g.audio.reload(s.st.reload, s.st.rk, s.st.ins);
   }
   damage(d, from, info) {
-    if (this.dead) return;
-    this.hp -= d; this.sinceHit = 0; this.lastHit = info; this.g.onHurt(from, d);
-    if (this.hp <= 0) { this.hp = 0; this.dead = true; }
+    if (this.dead || this.downed || this.kia) return;
+    const G = this.g;
+    if (G.mp && !G.mp.host) { // co-op client: only self-inflicted damage (falls) happens here; the host keeps everyone's health
+      this.hp = Math.max(1, this.hp - d); this.sinceHit = 0; this.lastHit = info; G.onHurt(from, d); G.mp.request({ k: 'selfdmg', d }); return;
+    }
+    this.hp -= d; this.sinceHit = 0; this.lastHit = info; G.onHurt(from, d);
+    if (this.hp <= 0) { this.hp = 0; if (G.mp) G.mp.localZero(); else this.dead = true; }
+  }
+  // co-op: downed (look around, wait for a teammate) or killed in action (watch a teammate)
+  updateOut(dt) {
+    const G = this.g, inp = G.inp, cam = G.camera;
+    inp.jump = false; inp.lmbPressed = false; this.vel.set(0, 0, 0); this.speed = 0; this.use = null; this.reloading = false; this.adsF = 0; this.sprinting = false; this.mantle = null; this.scoped = false;
+    if (!this.outView) { this.outView = true; for (const s of this.slots) s.view.visible = false; this.flash.visible = false; }
+    this.fwd.set(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
+    if (this.kia && G.mp && G.mp.spectate(cam)) return;
+    this.eye += (0.42 - this.eye) * damp(5, dt);
+    cam.position.set(this.pos.x, this.pos.y + this.eye, this.pos.z); cam.rotation.set(this.pitch, this.yaw, this.kia ? 0.5 : 0.22);
+    this.eyePos.copy(cam.position);
+    if (Math.abs(cam.fov - G.fov) > 0.01) { cam.fov = G.fov; cam.updateProjectionMatrix(); }
   }
   // mouse wheel while aiming through a variable scope: 0.25x steps inside the optic's range
   zoomStep(dir) {
@@ -98,8 +114,8 @@ export class Player {
       o.y -= 0.08;
       const v = new THREE.Vector3().copy(this.fwd).multiplyScalar(this.crouch ? 11 : 15); v.y += 3.6; v.x += this.vel.x * 0.5; v.z += this.vel.z * 0.5;
       G.spawnGrenade(t, o.clone(), v, 'player'); this.inv[t]--; if (this.inv[t] <= 0) this.cycleThrow();
-    } else if (u.type === 'med') { this.inv.med--; this.hp = Math.min(100, this.hp + 65); G.audio.pickup(); }
-    else if (u.type === 'stim') { this.inv.stim--; this.hp = Math.min(100, this.hp + 25); this.stimT = 8; G.audio.stim(); }
+    } else if (u.type === 'med') { this.inv.med--; this.hp = Math.min(100, this.hp + 65); G.audio.pickup(); if (G.mp && !G.mp.host) G.mp.request({ k: 'heal', item: 'med' }); }
+    else if (u.type === 'stim') { this.inv.stim--; this.hp = Math.min(100, this.hp + 25); this.stimT = 8; G.audio.stim(); if (G.mp && !G.mp.host) G.mp.request({ k: 'heal', item: 'stim' }); }
     else if (u.type === 'melee') G.melee();
   }
   // one physics sub-step of length dt (see update)
@@ -209,6 +225,8 @@ export class Player {
     const dYaw = -inp.mx * sens, dPitch = -inp.my * sens * (G.sensY ?? 1);
     this.yaw += dYaw; this.pitch = clamp(this.pitch + dPitch, -1.5, 1.5);
     const ir = 1 / Math.max(dt, 1e-3); this.yawRate = dYaw * ir; this.pitchRate = dPitch * ir; // rad/s, drives the weapon's look sway
+    if (this.downed || this.kia) return this.updateOut(dt);
+    if (this.outView) { this.outView = false; this.slots[this.shown].view.visible = true; this.eye = 1.62; }
     if (inp.jump) { this.jumpBuf = 0.12; inp.jump = false; }
     const p = this.pos, sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     // stance
@@ -258,6 +276,7 @@ export class Player {
       if (!this.relIn && prog >= w.ins) {
         this.relIn = true;
         if (w.shells) { s.mag++; s.reserve--; } else { const n = Math.min(w.mag - s.mag, s.reserve); s.mag += n; s.reserve -= n; }
+        if (G.mp && !G.mp.host) G.mp.request({ k: 'rl', w: s.id, mag: s.mag });
       }
       if (this.relT <= 0) {
         if (w.shells && s.mag < w.mag && s.reserve > 0 && !inp.lmb) { this.relT = this.relDur = w.reload; this.relIn = false; G.audio.reload(w.reload, 'shell', w.ins); }
@@ -302,6 +321,7 @@ export class Player {
       const d = this._v.set(Math.cos(ang) * Math.tan(rad), Math.sin(ang) * Math.tan(rad), -1).normalize().applyQuaternion(cam.quaternion);
       G.playerShot(cam.position, d, w, this.muzzleW, i === 0);
     }
+    if (G.mp) G.mp.shotDone(w, cam.position, this.muzzleW);
     const ar = 1 - this.adsF * 0.25, n = this.burst;
     this.rp += ((w.recoil * (n < 3 ? 1.15 : 0.85)) * Math.PI) / 180 * ar * (this.crouch ? 0.85 : 1);
     const hz = w.id === 'ak' && n > 4 ? Math.sin(n * 0.8) * 1.5 + (Math.random() - 0.5) : (Math.random() - 0.5) * 2;

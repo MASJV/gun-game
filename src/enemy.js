@@ -304,7 +304,7 @@ export class Enemy {
     if (this.takeCover('defend', this.lkp, o, 7)) return true;
     this.release(); this.route = [[o.x, o.z]]; this.wi = 0; this.waitR = [4, 9]; this.goTo(o.x, o.z); this.set('PATROL'); return true;
   }
-  goAlarm() { const P = this.g.world.panel; this.release(); if (!this.goTo(P.x, P.z)) return false; this.holdPost = false; this.set('ALARM', 'run'); return true; }
+  goAlarm() { const P = this.g.world.panel, spot = this.spot; if (!this.goTo(P.x, P.z)) return false; this.spot = spot; this.release(); this.holdPost = false; this.set('ALARM', 'run'); return true; } // only leave cover when the panel is reachable
   // ---------- shooting ----------
   fire(suppress) {
     const G = this.g, P = G.player, pr = this.pr, ch = this.ch;
@@ -324,7 +324,8 @@ export class Enemy {
     const D = G.v3.set(Math.sin(yaw) * cp, Math.sin(pit), Math.cos(yaw) * cp), a = G.v1.set(ox, oy, oz);
     const r = G.trace(a, D, 120, this), b = G.v2.set(ox + D.x * r.d, oy + D.y * r.d, oz + D.z * r.d); // same resolver as the player's rounds
     G.fx.tracer(a, b, 0xffb070);
-    if (r.kind === 'player') P.damage(DMG, this.pos, { name: this.type.name, dist: this.pd, x: this.pos.x, z: this.pos.z });
+    if (G.mp) G.mp.enemyFired(this, a, b, r);
+    if (r.kind === 'player') (r.player || P).damage(DMG, this.pos, { name: this.type.name, dist: this.pd, x: this.pos.x, z: this.pos.z });
     else { if (r.kind === 'world') G.fx.impact(b, V2.set(r.wh.nx, r.wh.ny, r.wh.nz), r.wh.c.mat); else if (r.kind === 'civ') r.e.damage(DMG); G.nearMiss(ox, oy, oz, D.x, D.y, D.z); }
     ch.fire(); G.enemyShotSound(this); G.sound(this.pos, 30, 'ally', this);
     return true;
@@ -456,6 +457,7 @@ export class Enemy {
       }
       case 'COVER': {
         const s = this.spot, m = this.mode;
+        if (!s) { this.engage(true); break; } // lost the spot (e.g. released elsewhere): fight from here
         face = lookAt(this.hasLkp || this.holdPost ? this.lkp : V.set(s.x - s.nx * 5, 0, s.z - s.nz * 5));
         if (this.phase === 'hide') {
           this.crouch = !s.high;

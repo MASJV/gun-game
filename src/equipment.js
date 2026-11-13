@@ -11,8 +11,8 @@ export class Grenades {
   constructor(G) { this.g = G; this.list = []; this.smokes = []; this._v = new THREE.Vector3(); }
   spawn(type, pos, vel, owner) {
     const m = new THREE.Mesh(geo[type], mat[type]); m.position.copy(pos); m.castShadow = true; this.g.scene.add(m);
-    this.list.push({ type, pos, vel, owner, fuse: FUSE[type], mesh: m, rest: false });
-    this.g.audio.swish();
+    const n = { type, pos, vel, owner, fuse: FUSE[type], mesh: m, rest: false }; this.list.push(n);
+    this.g.audio.swish(); return n;
   }
   update(dt) {
     const G = this.g, cols = G.world.colliders;
@@ -33,7 +33,7 @@ export class Grenades {
         if (v.lengthSq() < 0.09 && p.y < 0.08) n.rest = true;
         n.mesh.position.copy(p); n.mesh.rotation.x += dt * sp * 2; n.mesh.rotation.z += dt * sp;
       }
-      if (n.fuse <= 0) { this.detonate(n); G.scene.remove(n.mesh); this.list.splice(i, 1); }
+      if (n.fuse <= 0) { if (n.visual) { if (n.fuse < -4) { G.scene.remove(n.mesh); this.list.splice(i, 1); } continue; } this.detonate(n); G.scene.remove(n.mesh); this.list.splice(i, 1); } // co-op client copies wait for the host's detonation
     }
     for (let i = this.smokes.length - 1; i >= 0; i--) {
       const s = this.smokes[i]; s.t -= dt;
@@ -43,7 +43,7 @@ export class Grenades {
   }
   // guards who see or hear a frag land near them shout and scatter (once per grenade)
   warn(n) {
-    if (n.type !== 'frag' || n.warned || n.fuse < 0.35) return; n.warned = true;
+    if (n.type !== 'frag' || n.warned || n.fuse < 0.35 || (this.g.mp && !this.g.mp.host)) return; n.warned = true;
     const G = this.g, p = n.pos; let said = false;
     for (const e of G.enemies) {
       if (e.dead || e === n.owner || Math.hypot(e.pos.x - p.x, e.pos.z - p.z) > 7.5) continue;
@@ -52,8 +52,11 @@ export class Grenades {
   }
   detonate(n) {
     const G = this.g, P = G.player, p = n.pos, by = p.y + 0.35, dp = Math.hypot(P.pos.x - p.x, P.pos.z - p.z);
+    const auth = !G.mp || G.mp.host; // co-op clients only show the effects; the host applies them
+    if (G.mp && G.mp.host) { G.mp.onBoom(n); G.mp.shooter = n.ownerId == null ? null : n.ownerId; }
     if (n.type === 'frag') {
       G.fx.explosion(p); G.audio.explosion(dp); G.sound(p, 70, 'explosion'); if (G.range) G.range.onBlast(p);
+      if (!auth) { if (dp < 25) P.shake = Math.max(P.shake, 1.2 * (1 - dp / 25)); return; }
       const blast = (x, y, z, h) => { // damage 0..150, blocked by solid cover
         const d = Math.hypot(x - p.x, y + h * 0.5 - by, z - p.z); if (d > 8) return 0;
         const ex = G.losB(p.x, by, p.z, x, y + h * 0.55, z) ? 1 : G.losB(p.x, by, p.z, x, y + h * 0.9, z) ? 0.45 : 0;
@@ -63,10 +66,11 @@ export class Grenades {
       for (const e of G.enemies) { if (e.dead) continue; const d = blast(e.pos.x, e.pos.y, e.pos.z, e.crouch ? 1.1 : 1.75); if (d > 1) { e.damage(d, p, 'blast'); if (!e.dead) e.supp = 1.5; } }
       const d = blast(P.pos.x, P.pos.y, P.pos.z, P.height);
       if (d > 1) P.damage(d, p, { name: n.owner === 'player' ? 'your own grenade' : n.owner === 'charge' ? 'your own demolition charge' : 'a fragmentation grenade', dist: dp, x: p.x, z: p.z, blast: true });
+      if (G.mp) { G.mp.blast(blast, p, n); G.mp.shooter = null; }
       if (dp < 25) P.shake = Math.max(P.shake, 1.2 * (1 - dp / 25));
     } else if (n.type === 'flash') {
       G.fx.boom.position.set(p.x, by, p.z); G.fx.boom.intensity = 2500; G.sound(p, 40, 'explosion');
-      for (const e of G.enemies) {
+      for (const e of auth ? G.enemies : []) {
         if (e.dead) continue;
         const d = Math.hypot(e.pos.x - p.x, e.pos.z - p.z); if (d > 17) continue;
         const eye = e.ch.eye(this._v); if (!G.los(p.x, by, p.z, eye.x, eye.y, eye.z)) continue;
