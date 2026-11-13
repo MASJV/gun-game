@@ -1,0 +1,100 @@
+{
+ "loco": {
+  "30": {
+   "t90": 0.1,
+   "walk": 4.365,
+   "stopDist": 0.179,
+   "tStop": 0.1,
+   "sprint": 6.693,
+   "back": 3.405,
+   "strafeRev": 0.133,
+   "diag": 4.19,
+   "jump": 1.035,
+   "airLat": 1.282,
+   "crouchT": 0.2,
+   "swayPeak": 0.0912
+  },
+  "60": {
+   "t90": 0.083,
+   "walk": 4.365,
+   "stopDist": 0.179,
+   "tStop": 0.1,
+   "sprint": 6.693,
+   "back": 3.405,
+   "strafeRev": 0.117,
+   "diag": 4.19,
+   "jump": 1.037,
+   "airLat": 1.282,
+   "crouchT": 0.2,
+   "swayPeak": 0.0912
+  },
+  "120": {
+   "t90": 0.075,
+   "walk": 4.365,
+   "stopDist": 0.179,
+   "tStop": 0.1,
+   "sprint": 6.693,
+   "back": 3.405,
+   "strafeRev": 0.117,
+   "diag": 4.19,
+   "jump": 1.037,
+   "airLat": 1.282,
+   "crouchT": 0.2,
+   "swayPeak": 0.0912
+  },
+  "144": {
+   "t90": 0.076,
+   "walk": 4.365,
+   "stopDist": 0.179,
+   "tStop": 0.104,
+   "sprint": 6.693,
+   "back": 3.405,
+   "strafeRev": 0.118,
+   "diag": 4.19,
+   "jump": 1.037,
+   "airLat": 1.255,
+   "crouchT": 0.194,
+   "swayPeak": 0.0912
+  }
+ },
+ "stairs": {
+  "maxCamStepPerFrame": 0.053,
+  "endY": 1
+ },
+ "mantle": {
+  "duration": 0.483,
+  "maxCamMovePerFrame": 0.082,
+  "onTop": 1,
+  "speedAfter": 3.69
+ },
+ "aim": {
+  "iron": {
+   "hipDegPer100": 12.605,
+   "adsDegPer100": 9.1058,
+   "ratio": 0.7224,
+   "fov": 75,
+   "transitionMismatch": 0
+  },
+  "reddot": {
+   "hipDegPer100": 12.605,
+   "adsDegPer100": 8.5515,
+   "ratio": 0.6784,
+   "fov": 75,
+   "transitionMismatch": 0
+  },
+  "scope4": {
+   "hipDegPer100": 12.605,
+   "adsDegPer100": 3.1513,
+   "ratio": 0.25,
+   "fov": 75,
+   "transitionMismatch": 0
+  },
+  "scope10": {
+   "hipDegPer100": 12.605,
+   "adsDegPer100": 1.2605,
+   "ratio": 0.1,
+   "fov": 75,
+   "transitionMismatch": 0
+  }
+ }
+}

@@ -42,9 +42,11 @@ G.debugRender = () => { // used by the perf probe in tools/: one synchronous fra
   gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); 
   return { ms: Math.round(performance.now() - t0), calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
 };
-try { const s = JSON.parse(localStorage.getItem('sp2_settings') || '{}'); if (s.sens) G.sens = s.sens; if (s.fov) G.fov = s.fov; if (s.quality) G.sel.quality = s.quality; if (s.vol != null) G.vol = s.vol; if (s.adaptive != null) G.adaptive = s.adaptive; if (s.overlay != null) G.overlay = s.overlay; if (s.raw != null) G.rawInput = s.raw; if (s.cam != null) G.camMotion = s.cam; if (s.wsway != null) G.weaponSway = s.wsway; if (s.target) G.fpsTarget = s.target; G.lowLatency = !!s.lowlat; } catch (e) { /* defaults */ }
+try { const s = JSON.parse(localStorage.getItem('sp2_settings') || '{}'); if (s.sens) G.sens = s.sens; if (s.fov) G.fov = s.fov; if (s.quality) G.sel.quality = s.quality; if (s.vol != null) G.vol = s.vol; if (s.adaptive != null) G.adaptive = s.adaptive; if (s.overlay != null) G.overlay = s.overlay; if (s.raw != null) G.rawInput = s.raw; if (s.cam != null) G.camMotion = s.cam; if (s.wsway != null) G.weaponSway = s.wsway; if (s.target) G.fpsTarget = s.target; G.lowLatency = !!s.lowlat; for (const k of ['sensAds', 'sensScope', 'sensY', 'headBob']) if (typeof s[k] === 'number') G[k] = s[k]; if (s.sprintFov === false) G.sprintFov = false; } catch (e) { /* defaults */ }
+const CONTROL_DEFAULTS = { sens: 1, sensAds: 1, sensScope: 1, sensY: 1, fov: 75, camMotion: 0.5, headBob: 1, weaponSway: 1, sprintFov: true };
+for (const k in CONTROL_DEFAULTS) if (G[k] == null) G[k] = CONTROL_DEFAULTS[k];
 if (G.adaptive == null) G.adaptive = true; if (G.camMotion == null) G.camMotion = 0.5; if (G.weaponSway == null) G.weaponSway = 1; if (G.fpsTarget !== 'refresh') G.fpsTarget = '60'; if (G.rawInput == null) G.rawInput = true; G.overlay = !!G.overlay;
-const saveSettings = () => { try { localStorage.setItem('sp2_settings', JSON.stringify({ sens: G.sens, fov: G.fov, quality: G.sel.quality, vol: G.vol, adaptive: G.adaptive, overlay: G.overlay, raw: G.rawInput, cam: G.camMotion, wsway: G.weaponSway, target: G.fpsTarget, lowlat: !!G.lowLatency })); } catch (e) { /* ignore */ } };
+const saveSettings = () => { try { localStorage.setItem('sp2_settings', JSON.stringify({ sens: G.sens, fov: G.fov, quality: G.sel.quality, vol: G.vol, adaptive: G.adaptive, overlay: G.overlay, raw: G.rawInput, cam: G.camMotion, wsway: G.weaponSway, target: G.fpsTarget, lowlat: !!G.lowLatency, sensAds: G.sensAds, sensScope: G.sensScope, sensY: G.sensY, headBob: G.headBob, sprintFov: G.sprintFov })); } catch (e) { /* ignore */ } };
 
 // ---------- services used by player / enemies / equipment ----------
 const ray = (flag) => (ax, ay, az, bx, by, bz) => {
@@ -570,7 +572,11 @@ addEventListener('keydown', (ev) => {
 });
 addEventListener('keyup', (ev) => { G.inp.k[ev.code] = false; });
 addEventListener('blur', () => { G.inp.k = {}; G.inp.lmb = G.inp.rmb = false; });
-addEventListener('mousemove', (ev) => { if (G.state === 'playing' && (document.pointerLockElement === canvas || TEST)) { if (!inFirst) inFirst = ev.timeStamp || performance.now(); G.inp.mx += ev.movementX; G.inp.my += ev.movementY; } });
+let lockedAt = 0;
+addEventListener('mousemove', (ev) => { if (G.state === 'playing' && (document.pointerLockElement === canvas || TEST)) {
+  // browsers can report one bogus jump right after the pointer is captured
+  if (!TEST && performance.now() - lockedAt < 60) return;
+  if (!inFirst) inFirst = ev.timeStamp || performance.now(); G.inp.mx += ev.movementX; G.inp.my += ev.movementY; } });
 addEventListener('mousedown', (ev) => {
   if (G.state !== 'playing') return;
   if (!TEST && document.pointerLockElement !== canvas) return lock();
@@ -583,7 +589,7 @@ addEventListener('wheel', (ev) => { // scoped: adjust magnification; otherwise c
 }, { passive: false });
 addEventListener('contextmenu', (ev) => ev.preventDefault());
 document.addEventListener('pointerlockchange', () => {
-  if (document.pointerLockElement === canvas) { if (G.state === 'paused') { G.state = 'playing'; show(null); last = performance.now(); } }
+  if (document.pointerLockElement === canvas) { lockedAt = performance.now(); G.inp.mx = G.inp.my = 0; if (G.state === 'paused') { G.state = 'playing'; show(null); last = performance.now(); } }
   else if (G.state === 'playing' && !TEST) pause();
 });
 
@@ -658,8 +664,15 @@ $('content').addEventListener('click', (ev) => {
 });
 const slider = (id, key, fmt, apply) => { const el = $(id); el.value = G[key]; $(id + 'v').textContent = fmt(G[key]); el.addEventListener('input', () => { G[key] = +el.value; $(id + 'v').textContent = fmt(G[key]); saveSettings(); if (apply) apply(); }); };
 if (G.vol == null) G.vol = 0.75;
-slider('sens', 'sens', (v) => v.toFixed(2)); slider('cammo', 'camMotion', (v) => (v ? Math.round(v * 100) + '%' : 'OFF')); slider('wsway', 'weaponSway', (v) => (v ? Math.round(v * 100) + '%' : 'OFF')); slider('fov', 'fov', (v) => v); slider('vol', 'vol', (v) => Math.round(v * 100), () => { if (G.audio.master) G.audio.master.gain.value = G.vol; });
+const pct = (v) => Math.round(v * 100) + '%', mult = (v) => v.toFixed(2) + '×';
+slider('sens', 'sens', (v) => v.toFixed(2) + ` (${((0.0022 * v * 180) / Math.PI).toFixed(3)}°/count)`); slider('sensAds', 'sensAds', mult); slider('sensScope', 'sensScope', mult); slider('sensY', 'sensY', mult); slider('headBob', 'headBob', (v) => (v ? pct(v) : 'OFF')); slider('cammo', 'camMotion', (v) => (v ? Math.round(v * 100) + '%' : 'OFF')); slider('wsway', 'weaponSway', (v) => (v ? Math.round(v * 100) + '%' : 'OFF')); slider('fov', 'fov', (v) => v); slider('vol', 'vol', (v) => Math.round(v * 100), () => { if (G.audio.master) G.audio.master.gain.value = G.vol; });
 const chk = (id, key, after) => { const el = $(id); el.checked = !!G[key]; el.addEventListener('change', () => { G[key] = el.checked; saveSettings(); if (after) after(); }); };
+chk('sfovchk', 'sprintFov');
+$('resetctl').addEventListener('click', () => { // controls + comfort back to defaults (graphics / audio untouched)
+  for (const k in CONTROL_DEFAULTS) G[k] = CONTROL_DEFAULTS[k];
+  for (const [id, key] of [['sens', 'sens'], ['sensAds', 'sensAds'], ['sensScope', 'sensScope'], ['sensY', 'sensY'], ['fov', 'fov'], ['cammo', 'camMotion'], ['headBob', 'headBob'], ['wsway', 'weaponSway']]) { $(id).value = G[key]; $(id).dispatchEvent(new Event('input')); }
+  $('sfovchk').checked = true; saveSettings();
+});
 chk('adchk', 'adaptive', () => { if (!G.adaptive) { G.pacing.scale = 1; renderer.setPixelRatio(basePixelRatio()); resize(); } }); chk('ovchk', 'overlay', () => setOverlay(G.overlay)); chk('rawchk', 'rawInput'); chk('llchk', 'lowLatency', () => { $('llnote').style.display = G.lowLatency !== LOWLAT ? 'inline' : 'none'; });
 $('fpstarget').value = G.fpsTarget; $('fpstarget').addEventListener('change', (ev) => { G.fpsTarget = ev.target.value; saveSettings(); });
 setOverlay(G.overlay);

@@ -201,12 +201,19 @@ h1 span{color:var(--g)}
     </div>
     <div class="tab" id="t-settings">
       <div class="grp"><label>CONTROLS</label>
-        <div class="row"><span>MOUSE SENSITIVITY</span><input type="range" id="sens" min="0.3" max="2.5" step="0.05" value="1"><output id="sensv">1.00</output></div>
+        <div class="row"><span>MOUSE SENSITIVITY</span><input type="range" id="sens" min="0.1" max="3" step="0.01" value="1"><output id="sensv" style="width:150px">1.00</output></div>
+        <div class="row"><span>ADS SENSITIVITY</span><input type="range" id="sensAds" min="0.3" max="2" step="0.05" value="1"><output id="sensAdsv">1.00×</output></div>
+        <div class="row"><span>SCOPE SENSITIVITY</span><input type="range" id="sensScope" min="0.3" max="2" step="0.05" value="1"><output id="sensScopev">1.00×</output></div>
+        <div class="row"><span>VERTICAL SENSITIVITY</span><input type="range" id="sensY" min="0.5" max="1.5" step="0.05" value="1"><output id="sensYv">1.00×</output></div>
+        <p style="font-size:11px;color:#74838a;margin-top:-4px">Aiming already scales with zoom so the view moves the same distance on screen per mouse count at every magnification (1.00×). ADS and scope multipliers adjust from there.</p>
         <div class="row"><span>FIELD OF VIEW</span><input type="range" id="fov" min="60" max="95" step="1" value="75"><output id="fovv">75</output></div></div>
       <div class="grp"><label>COMFORT</label>
         <div class="row"><span>CAMERA MOTION</span><input type="range" id="cammo" min="0" max="1" step="0.05" value="0.5"><output id="cammov">50%</output></div>
+        <div class="row"><span>HEAD BOB</span><input type="range" id="headBob" min="0" max="1" step="0.05" value="1"><output id="headBobv">100%</output></div>
+        <label class="row chk"><input type="checkbox" id="sfovchk"><span>SPRINT FIELD-OF-VIEW EFFECT</span></label>
         <div class="row"><span>WEAPON SWAY</span><input type="range" id="wsway" min="0" max="1" step="0.05" value="1"><output id="wswayv">100%</output></div>
-        <p style="font-size:11px;color:#74838a;margin-top:-4px">Camera motion scales head bob, landing dip, lean tilt, sprint field-of-view and explosion shake. 0 turns them off. Aim, recoil and scope sway are not affected.</p></div>
+        <p style="font-size:11px;color:#74838a;margin-top:-4px">Camera motion is the master control for head bob, landing dip, lean tilt, sprint field-of-view and explosion shake (0 turns them all off). Head bob is relative to it. Weapon sway only moves the gun, never the view.</p>
+        <button class="btn alt" id="resetctl" style="margin-top:6px">RESET CONTROLS &amp; COMFORT TO DEFAULTS</button></div>
       <div class="grp"><label>AUDIO</label>
         <div class="row"><span>MASTER VOLUME</span><input type="range" id="vol" min="0" max="1" step="0.05" value="0.75"><output id="volv">75</output></div></div>
       <div class="grp"><label>GRAPHICS QUALITY</label><div class="opts" data-k="quality">
