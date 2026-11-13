@@ -242,7 +242,8 @@ function onClose(c) {
 }
 function statusInfo() { return { ok: true, game: 'SHADOW PROTOCOL', port: PORT, parties: rooms.size, players: [...rooms.values()].reduce((a, r) => a + r.players.length, 0), lan: lanAddresses() }; }
 
-// ---------------------------------------------------------------- server
+// ---------------------------------------------------------------- server (only when run directly; tests require() the helpers)
+function main() {
 const server = http.createServer(serveStatic);
 server.on('upgrade', (req, sock) => {
   const ra = sock.remoteAddress;
@@ -270,4 +271,6 @@ server.listen(PORT, '0.0.0.0', () => { // all interfaces, but see the address po
   console.log('  Ctrl+C stops the server (and ends every party).\n');
 });
 server.on('error', (e) => { console.error(e.code === 'EADDRINUSE' ? `Port ${PORT} is already in use — try: npm run lan -- --port ${PORT + 1}` : e.message); process.exit(1); });
-module.exports = { isLocalAddress };
+}
+if (require.main === module) main();
+module.exports = { isLocalAddress, parseLanAddresses: lanAddresses };

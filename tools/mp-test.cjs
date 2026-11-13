@@ -198,7 +198,12 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   await wait(500);
   const dropped = await A.evaluate(() => { const r = [...window.__SP.mp.players.values()][0]; return { connected: r.connected, state: window.__SP.state, team: document.getElementById('mphud').textContent, targets: window.__SP.mp.standing().length }; });
   check('disconnect: when a client’s browser closes, the host keeps playing, shows LINK LOST and the guards stop targeting the missing operator', !dropped.connected && dropped.state === 'playing' && /LINK LOST/.test(dropped.team) && dropped.targets === 1, dropped);
-  await A.evaluate(() => { document.getElementById('brback').click(); }); // leave party from the mission
+  await A.evaluate(() => { const P = window.__SP.player; P.damage(500, P.pos, { name: 'test' }); });
+  await A.waitForFunction(() => window.__SP.state === 'dead', null, { timeout: 8000 }).catch(() => {});
+  const wipe = await A.evaluate(() => [window.__SP.state, document.getElementById('endt').textContent, document.getElementById('ends').textContent]);
+  check('team wipe: when no operator is left standing the mission fails for the team', wipe[0] === 'dead' && /FAILED/.test(wipe[1]) && /DOWN/.test(wipe[2]), wipe);
+  await A.evaluate(() => { document.getElementById('emenu').click(); }); await wait(300);
+  await A.evaluate(() => { if (window.__SP.mpLobby) window.__SP.mpLobby.leave(); }); // leave the party
   await A.waitForFunction(() => window.__SP.state === 'menu', null, { timeout: 10000 }).catch(() => {});
   await A.ctx.close();
 
@@ -226,6 +231,15 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   await wait(600);
   const fireSeen = await H.evaluate(() => [...window.__SP.mp.scores.entries()].filter(([id]) => id !== window.__SP.mp.id).map(([, s]) => s.shots));
   check('four players: shots from all three clients reach the host and are accepted', fireSeen.length === 3 && fireSeen.every((n) => n >= 1), fireSeen);
+  // bandwidth: what one client receives and sends during a live four-player mission
+  const bw = await C[0].evaluate(async () => { const n = window.__SP.mpLobby.net, i0 = n.bytesIn, o0 = n.bytesOut, r0 = n.recv, t0 = performance.now(); await new Promise((r) => setTimeout(r, 3000)); const s = (performance.now() - t0) / 1000; return { inKBs: +((n.bytesIn - i0) / 1024 / s).toFixed(1), outKBs: +((n.bytesOut - o0) / 1024 / s).toFixed(1), msgsPerSec: Math.round((n.recv - r0) / s) }; });
+  check('bandwidth: a client in a four-player mission receives well under 100 KB/s and sends under 10 KB/s', bw.inKBs < 100 && bw.outKBs < 10, bw);
+  // C3 goes down and bleeds out: killed in action on every screen, C3 now watches a teammate
+  await H.evaluate(() => { const G = window.__SP, rp = [...G.mp.players.values()][2]; rp.damage(500, rp.pos, { name: 'test' }); setTimeout(() => { rp.bleed = 0.2; }, 300); });
+  await C[2].waitForFunction(() => window.__SP.player.kia === true, null, { timeout: 10000 }).catch(() => {});
+  const kia = await C[2].evaluate(() => { const G = window.__SP, c = G.camera.position, near = [...G.mp.players.values()].some((r) => r.view && Math.hypot(r.view.x - c.x, r.view.z - c.z) < 1); return [G.player.kia, near]; });
+  const kiaSeen = await Promise.all([H, C[0]].map((p) => p.evaluate(() => [...window.__SP.mp.players.values()].some((r) => r.kia))));
+  check('bleed-out: a downed operator who is not revived in time is KIA on every screen and spectates a teammate', kia[0] && kia[1] && kiaSeen.every(Boolean), { kia, kiaSeen });
   // C2 completes the objective, everyone extracts, everyone sees the same result
   const it = await C[1].evaluate(async () => {
     const G = window.__SP, P = G.player, Mi = G.mission, s = Mi.stage, it = Mi.items.find((x) => x.stage === Mi.i && !x.taken), a = s.anchors[it.k].stand;
@@ -233,10 +247,10 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
     key('KeyE', true); window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' })); await until(() => Mi.complete, (s.hold || 0) * 1000 + 6000); key('KeyE', false); return Mi.complete;
   });
   const ex4 = await H.evaluate(() => window.__SP.mission.def.exit.pos);
-  for (const [k, p] of all.entries()) await p.evaluate(([ex, k]) => { const P = window.__SP.player; P.pos.set(ex[0] + (k % 2) * 1.2, 0, ex[2] + (k > 1 ? 1.2 : 0)); P.vel.set(0, 0, 0); }, [ex4, k]);
+  for (const [k, p] of all.entries()) if (k !== 3) await p.evaluate(([ex, k]) => { const P = window.__SP.player; P.pos.set(ex[0] + (k % 2) * 1.2, 0, ex[2] + (k > 1 ? 1.2 : 0)); P.vel.set(0, 0, 0); }, [ex4, k]);
   await Promise.all(all.map((p) => p.waitForFunction(() => window.__SP.state === 'won', null, { timeout: 15000 }).catch(() => {})));
   const r4 = await Promise.all(all.map((p) => p.evaluate(() => [window.__SP.state, window.__SP.coopResult && JSON.stringify(window.__SP.coopResult.players)])));
-  check('four players: a client completes the objective, all four extract, all four see the identical result', it && r4.every((r) => r[0] === 'won' && r[1] === r4[0][1]), r4.map((r) => r[0]));
+  check('four players: a client completes the objective, the three survivors extract, all four see the identical result (KIA recorded)', it && r4.every((r) => r[0] === 'won' && r[1] === r4[0][1]) && /KIA/.test(r4[0][1]), r4.map((r) => r[0]));
   // the host closes the game: every client is told the party ended and lands back in the menu
   await all[0].evaluate(() => document.getElementById('emenu').click());
   for (const c of C) await c.evaluate(() => document.getElementById('emenu').click());
