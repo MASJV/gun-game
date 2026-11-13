@@ -22,6 +22,8 @@ export const PALETTES = {
   // non-combatants: no helmet or armour, bare head and hands
   hostage: { jacket: 0xa8602c, pants: 0xa8602c, civ: 'hostage', skin: 0x8f6b55 },
   hvt: { jacket: 0x9a9388, pants: 0x2c2e33, civ: 'hvt', skin: 0x8f6b55 },
+  // multiplayer teammates: coyote tan, unlike every hostile palette (and they carry name tags)
+  ally: { jacket: 0x8a7a56, pants: 0x5f5644, gear: 0x463f31, helmet: 0x6e6550 },
 };
 
 let T = null; // template data, built once
@@ -155,11 +157,8 @@ export class Character {
     inner.updateMatrixWorld(true);
     if (!full) this.addGear(palette);
     // weapon in the right hand
-    if (gunId) {
-      const gun = (this.gun = makeGun(gunId)); mergeGun(gun, gunId); gun.quaternion.copy(T.gunQuat); gun.position.copy(T.gunPos); this.bones.hand_r.add(gun);
-      this.flash = new THREE.Mesh(T.geo.flash, T.mats.flash); this.flash.position.copy(gun.muzzle).z -= 0.08; this.flash.scale.set(1, 1, 2.2); this.flash.visible = false; gun.add(this.flash);
-      this.gripL = gun.pt(gun.def.hand); this.gripL.y -= 0.035; this.gripL.z += 0.03;
-    } else { this.gun = null; this.flash = { visible: false }; }
+    if (gunId) this.setGun(gunId);
+    else { this.gun = null; this.flash = { visible: false }; }
     // animation
     const mx = (this.mixer = new THREE.AnimationMixer(inner));
     this.act = {};
@@ -234,6 +233,14 @@ export class Character {
     return a.getClip().duration / speed;
   }
   die(knock) { if (this.dead) return; this.dead = true; this.uOne = null; this.flash.visible = false; this.playFull(knock ? 'Hit_Knockback' : 'Death01', { hold: true, speed: 1.15 }); if (knock) this.root.userData.knock = 1; }
+  // weapon in the right hand (also used to switch a multiplayer teammate's weapon)
+  setGun(gunId) {
+    if (this.gunId === gunId && this.gun) return; this.gunId = gunId;
+    if (this.gun) this.bones.hand_r.remove(this.gun);
+    const gun = (this.gun = makeGun(gunId)); mergeGun(gun, gunId); gun.quaternion.copy(T.gunQuat); gun.position.copy(T.gunPos); this.bones.hand_r.add(gun);
+    this.flash = new THREE.Mesh(T.geo.flash, T.mats.flash); this.flash.position.copy(gun.muzzle).z -= 0.08; this.flash.scale.set(1, 1, 2.2); this.flash.visible = false; gun.add(this.flash);
+    this.gripL = gun.pt(gun.def.hand); this.gripL.y -= 0.035; this.gripL.z += 0.03;
+  }
   fire() { this.kick = 1; this.flashT = 0.05; this.flash.visible = true; this.flash.rotation.z = Math.random() * 6; }
   // per-frame ---------------------------------------------------------------------------------
   // s: { speed (m/s), crouch, aim (bool), pitch (rad, + = up), lean (-1..1, + = to the character's right) }

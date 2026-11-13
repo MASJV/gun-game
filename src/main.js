@@ -14,6 +14,7 @@ import { makeBallistics } from './ballistics.js';
 import { Range } from './range.js';
 import { MISSIONS, LENGTHS, Mission, generateMission, deployment, briefing, loadHistory, recordMission, validate } from './missions.js';
 import { Audio } from './audio.js';
+import { initLobby, createSession } from './mp.js';
 
 const $ = (id) => document.getElementById(id);
 const TEST = location.search.includes('test');
@@ -71,6 +72,7 @@ const ray = (flag) => (ax, ay, az, bx, by, bz) => {
 };
 G.los = ray('sight'); G.losB = ray('bullet');
 G.sound = (pos, radius, kind, src) => {
+  if (G.mp && !G.mp.host) return; // multiplayer client: guards are the host's puppets
   for (const e of G.enemies) {
     if (e === src || e.dead) continue;
     const d = Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z);
@@ -101,17 +103,27 @@ G.nearMiss = (ox, oy, oz, dx, dy, dz) => {
   const c = G.camera.position, t = (c.x - ox) * dx + (c.y - oy) * dy + (c.z - oz) * dz;
   if (t > 0 && Math.hypot(ox + dx * t - c.x, oy + dy * t - c.y, oz + dz * t - c.z) < 1.4) G.audio.whiz(panTo(ox, oz));
 };
-const BAL = makeBallistics(G); G.trace = BAL.trace;
+const BAL = makeBallistics(G); G.trace = BAL.trace; G.playerRound = BAL.playerRound;
 G.playerShot = (o, d, w, muzzle, first) => {
   const r = BAL.playerRound(o, d, muzzle), end = G.v1.set(r.from.x + r.dir.x * r.d, r.from.y + r.dir.y * r.d, r.from.z + r.dir.z * r.d);
   if (first || Math.random() < 0.4) G.fx.tracer(muzzle, end);
+  if (G.mp) {
+    G.mp.addPellet(d, end);
+    if (!G.mp.host) { // the host resolves damage; show the impact now so firing feels instant
+      if (r.kind === 'enemy' || r.kind === 'civ') G.fx.blood(end, G.v2.copy(d).negate());
+      else if (r.kind === 'world') { G.fx.impact(end, G.v2.set(r.wh.nx, r.wh.ny, r.wh.nz), r.wh.c.mat); if (first) G.audio.thud(Math.min(1, 8 / (4 + r.d)), r.wh.c.mat); }
+      return;
+    }
+    G.mp.shooter = G.mp.id;
+    if (G.mp.ff) { const h = G.mp.traceTeam(r.from, r.dir, r.d, G.player); if (h) { G.mp.hurt(h.p, w.dmg * 0.6, G.player.pos, { name: 'friendly fire', dist: h.d }); G.mp.shooter = null; return; } }
+  }
   if (G.range) G.range.onShot(r, end, w, first);
   if (r.kind === 'enemy') {
     const hitE = r.e; let dmg = w.dmg * (r.part === 'head' ? w.head || 2.5 : r.mult);
     if (w.falloff && r.d > w.falloff[0]) dmg *= 1 - (1 - w.falloff[1]) * Math.min(1, (r.d - w.falloff[0]) / (w.falloff[0] * 1.5));
     hitE.damage(dmg, G.player.pos, r.part); G.fx.blood(end, G.v2.copy(d).negate());
     for (const e of G.enemies) if (!e.dead && e !== hitE && !e.seeing) e.supp = Math.min(1.5, e.supp + (Math.hypot(e.pos.x - end.x, e.pos.z - end.z) < 3 ? 0.35 : 0));
-    if (first) G.stats.hits++; if (r.part === 'head') G.stats.heads++; hitMark(hitE.dead, r.part === 'head'); G.audio.hit(hitE.dead, r.part === 'head');
+    if (first) G.stats.hits++; if (r.part === 'head') G.stats.heads++; hitMark(hitE.dead, r.part === 'head'); G.audio.hit(hitE.dead, r.part === 'head'); if (G.mp && first) G.mp.shotHit(r.part === 'head');
   } else if (r.kind === 'civ') { r.e.damage(w.dmg * r.mult); G.fx.blood(end, G.v2.copy(d).negate()); hitMark(false); }
   else if (r.kind === 'world') {
     G.fx.impact(end, G.v2.set(r.wh.nx, r.wh.ny, r.wh.nz), r.wh.c.mat); if (first) G.audio.thud(Math.min(1, 8 / (4 + r.d)), r.wh.c.mat);
@@ -123,6 +135,8 @@ G.playerShot = (o, d, w, muzzle, first) => {
 };
 G.melee = () => {
   const P = G.player, o = G.camera.position, f = P.fwd, K = WEAPONS.knife;
+  if (G.mp && !G.mp.host) { G.mp.request({ k: 'melee', f: [f.x, f.y, f.z] }); return; }
+  if (G.mp) G.mp.shooter = G.mp.id;
   let best = null, bd = K.range;
   for (const e of G.enemies) {
     if (e.dead) continue;
@@ -137,7 +151,11 @@ G.melee = () => {
   best.damage(lethal ? 999 : K.dmg, P.pos, 'torso'); G.fx.blood(G.v1.set(best.pos.x, best.pos.y + 1.2, best.pos.z), G.v2.copy(f).negate());
   G.audio.stab(best.dead); hitMark(best.dead); if (best.dead) G.stats.knife++;
 };
-G.spawnGrenade = (type, pos, vel, owner) => G.gren.spawn(type, pos, vel, owner);
+G.spawnGrenade = (type, pos, vel, owner, ownerId, q) => {
+  const n = G.gren.spawn(type, pos, vel, owner);
+  if (G.mp) { if (G.mp.host) G.mp.onNade(n, owner === 'player' ? G.mp.id : ownerId, q); else if (owner === 'player') G.mp.throwReq(n); }
+  return n;
+};
 G.onKill = () => { G.stats.kills++; };
 G.spawnEnemy = (...a) => spawnEnemy(...a);
 G.onHurt = (from, d) => { G.audio.hurt(); vig = Math.min(1, vig + 0.3 + d * 0.012); addInd(from.x, from.z, '#ff4a3a', 1.2); };
@@ -156,7 +174,7 @@ G.reinforce = () => { // a finite response team walks in from the map edge farth
     const e = spawnEnemy(s.x + i * 1.6, s.z + (i % 2) * 1.5, [[R.x, R.z]], { duty: 'response' });
     e.alerted = true; e.setOrder(i === 0 ? { type: 'investigate', x: R.x, z: R.z } : { type: 'defend', x: W.posts.objective[i % W.posts.objective.length][0], z: W.posts.objective[i % W.posts.objective.length][1], tx: R.x, tz: R.z });
   });
-  toast(`RESPONSE TEAM ENTERING FROM THE ${s.n.toUpperCase()}`, 4.5);
+  G.toast(`RESPONSE TEAM ENTERING FROM THE ${s.n.toUpperCase()}`, 4.5);
 };
 
 // ---------- mission lifecycle ----------
@@ -196,7 +214,7 @@ function spawnEnemy(x, z, route, o) {
   if (!typeBag.length) typeBag = ['guard', 'guard', 'aggressor', 'cautious', 'guard', 'aggressor', 'cautious', 'guard'].sort(() => Math.random() - 0.5);
   const c = G.world.nav.nearest(x, z) || { x, z };
   const e = new Enemy(G, c.x, c.z, route, typeBag.pop(), PROFILES[G.sel.ai], o);
-  G.enemies.push(e); return e;
+  G.enemies.push(e); if (G.onSpawnEnemy) G.onSpawnEnemy(e); return e;
 }
 function basePixelRatio() { const q = G.sel.quality; return q === 'low' ? 1 : Math.min(window.devicePixelRatio || 1, q === 'high' ? 2 : 1.25); }
 function applyQuality() {
@@ -272,15 +290,16 @@ function startMission() {
   const def = isRange ? { map: 'range', type: 'range', length: 'quick', seed: 0, plan: [], entry: W.entries[0], exit: { id: '-', name: '-', pos: [0, 0, 9999] }, primary: { id: 'range', name: 'range', at: [0, 0, -50], stand: [0, -50], posts: [] }, fallback: null, stages: [] }
     : classic ? { map: W.id, type: 'intel', length: 'quick', seed: 0, plan: [W.id === 'forest' ? 'retrieve' : 'hack'], entry: W.entries[0], exit: W.exits[0], primary: W.anchors[0], fallback: null,
     stages: [W.id === 'forest' ? { kind: 'retrieve', title: 'Recover the intelligence package', obj: 'intel', hold: 0, prompt: 'Take intelligence package', anchors: [W.anchors[0]], correct: 0 } : { kind: 'hack', title: 'Access the secure terminal', obj: 'terminal', hold: 3, prompt: 'Hold to access secure terminal', anchors: [W.anchors[0]], correct: 0 }] }
-    : generateMission(W, { type: G.sel.mission, length: MISSIONS[G.sel.mission].lengths.includes(L) ? L : MISSIONS[G.sel.mission].lengths[0], seed: G.sel.seed }, G.hist);
-  if (!classic && !isRange) recordMission(G.hist, def);
+    : generateMission(W, { type: G.sel.mission, length: MISSIONS[G.sel.mission].lengths.includes(L) ? L : MISSIONS[G.sel.mission].lengths[0], seed: G.sel.seed }, G.mp ? {} : G.hist); // multiplayer: same seed + no local history = the same mission everywhere
+  if (!classic && !isRange && !G.mp) recordMission(G.hist, def);
   G.civs = [];
   G.player = new Player(G, def.entry, G.loadout);
+  if (G.mp) spreadSpawn(G.player, def.entry, G.mp.slot, G.mp.count);
   G.enemies = []; typeBag = []; G.spawnQ = [];
   G.sec = new Security(G, PROFILES[G.sel.ai]);
   // the site is staffed from the first second: objective detail, sentries on the other objectives, door guards, patrols
   const nav = W.nav;
-  for (const d of isRange ? [] : deployment(W, def, W.guards + LENGTHS[def.length].extra)) {
+  for (const d of isRange || (G.mp && !G.mp.host) ? [] : deployment(W, def, W.guards + LENGTHS[def.length].extra)) { // multiplayer clients get the host's roster
     if (d.route) { const e = spawnEnemy(d.p[0], d.p[1], d.route, { duty: 'patrol' }); e.wi = Math.floor(Math.random() * d.route.length); continue; }
     const a = rnd(6.28), q = nav.snap(d.p[0] + Math.cos(a) * 2.5, d.p[1] + Math.sin(a) * 2.5), c = nav.nearest(d.p[0], d.p[1]);
     spawnEnemy(d.p[0], d.p[1], q && c && nav.line(c, q) ? [[d.p[0], d.p[1]], [q.x, q.z]] : [[d.p[0], d.p[1]]], { duty: d.duty, home: d.p, wait: d.wait });
@@ -307,8 +326,19 @@ function startMission() {
   const M2 = MISSIONS[def.type];
   $('brt').textContent = M2.name; $('brs').textContent = `${W.name} · ${LENGTHS[def.length].name} · ENEMY ${PROFILES[G.sel.ai].label}`;
   $('brl').innerHTML = `<div><i>INSERTION</i>${def.entry.name}</div>` + briefing(def).map((l) => `<div>${l}</div>`).join('') + (def.fallbackUsed ? '<div><i>NOTE</i>fallback layout used</div>' : '');
+  if (G.mp) { // wait for every operator's game to finish loading; the server then says go
+    G.state = 'brief'; show('briefov'); G.player.update(0.016);
+    $('brgo').disabled = true; $('brgo').textContent = 'WAITING FOR TEAM…'; $('brback').textContent = 'LEAVE PARTY';
+    $('mphud').style.display = 'block'; G.mp.ready(); return;
+  }
+  $('brgo').disabled = false; $('brgo').textContent = 'BEGIN MISSION'; $('brback').textContent = 'RETURN TO MENU'; $('mphud').style.display = 'none';
   if (TEST || classic) { show(null); G.state = 'playing'; toast(M2.name + ' — ' + def.stages[0].title.toUpperCase(), 4); if (!TEST) lock(); }
   else { G.state = 'brief'; show('briefov'); G.player.update(0.016); }
+}
+// co-op insertion: operators stand side by side across the insertion heading, on free ground
+function spreadSpawn(P, e, slot, n) {
+  const off = (slot - (n - 1) / 2) * 1.3, x = e.x + Math.cos(e.yaw) * off, z = e.z - Math.sin(e.yaw) * off;
+  if (G.world.nav.snap(x, z) && !P.hits(x, 0, z)) { P.pos.x = x; P.pos.z = z; }
 }
 function beginMission() { if (G.state !== 'brief') return; show(null); G.state = 'playing'; last = performance.now(); toast(MISSIONS[G.mission.def.type].name + ' — ' + G.mission.def.stages[0].title.toUpperCase(), 4); lock(); }
 // Raw (unaccelerated) mouse input where the browser supports it; plain pointer lock otherwise.
@@ -344,13 +374,16 @@ G.animEvery = (pos) => {
   return d < 45 ? 1 : d < 75 ? 2 : 3;
 };
 function show(id) { for (const k of ['menu', 'pause', 'end', 'load', 'briefov']) $(k).classList.toggle('on', k === id); }
-function pause() { if (G.state !== 'playing') return; G.state = 'paused'; $('phint').textContent = 'MISSION ON HOLD'; show('pause'); G.inp.k = {}; G.inp.lmb = G.inp.rmb = false; }
+function pause() { if (G.state !== 'playing') return; G.state = 'paused'; $('phint').textContent = G.mp ? 'CO-OP MISSION — THE GAME KEEPS RUNNING' : 'MISSION ON HOLD'; show('pause'); G.inp.k = {}; G.inp.lmb = G.inp.rmb = false; }
 function resume() { if (G.state !== 'paused') return; if (TEST) { G.state = 'playing'; show(null); } else lock(); }
 function toMenu() {
+  if (G.mp) { G.mp.dispose(); G.mp = null; $('mphud').style.display = 'none'; if (G.mpLobby && G.mpLobby.inParty()) M.tab = 'mp'; }
   G.state = 'menu'; disposeScene(); $('hud').classList.remove('on'); setNV(false); $('scope').style.display = 'none'; $('flashov').style.opacity = 0;
   show('menu'); if (document.pointerLockElement) document.exitPointerLock(); menuRefresh();
+  if (G.mpLobby && G.mpLobby.inParty()) openTab('mp');
 }
 function endMission(win, reason) {
+  $('again').style.display = ''; $('emenu').textContent = 'RETURN TO MENU';
   G.state = win ? 'won' : 'dead';
   if (document.pointerLockElement) document.exitPointerLock();
   G.audio.siren(false); $('scope').style.display = 'none'; $('flashov').style.opacity = 0;
@@ -366,6 +399,22 @@ function endMission(win, reason) {
     ['Highest security level', LEVELS[s.maxSec]], ['Health remaining', Math.ceil(P.hp)], ['Objectives completed', `${Math.min(G.mission.i, md.stages.length)} / ${md.stages.length}`]];
   $('endstats').innerHTML = rows.map(([a, b]) => `<span>${a}</span><b>${b}</b>`).join('');
   show('end'); win ? G.audio.win() : G.audio.lose();
+}
+// co-op results (identical on every operator's screen: the host sends them)
+function endCoop(m) {
+  G.state = m.win ? 'won' : 'dead';
+  if (document.pointerLockElement) document.exitPointerLock();
+  G.audio.siren(false); $('scope').style.display = 'none'; $('flashov').style.opacity = 0;
+  $('endt').textContent = m.win ? 'MISSION COMPLETE' : 'MISSION FAILED'; $('endt').style.color = m.win ? 'var(--g)' : '#ff6a5a';
+  $('ends').textContent = m.win ? 'TEAM EXTRACTED' : m.reason || 'MISSION FAILED';
+  const md = G.mission.def, t = m.time | 0;
+  const rows = [['Mission', MISSIONS[md.type].short + ' · ' + LENGTHS[md.length].name], ['Map', G.world.name], ['Enemy intelligence', PROFILES[G.sel.ai].label], ['Time', `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`],
+    ['Hostiles neutralised', `${m.killed} / ${m.total}`], ['Objectives completed', `${m.objectives[0]} / ${m.objectives[1]}`], ['Highest security level', LEVELS[m.maxSec | 0] || '—']];
+  $('endstats').innerHTML = rows.map(([a, b]) => `<span>${a}</span><b>${b}</b>`).join('') +
+    `<div class="team"><div class="h"><span>OPERATOR</span><span>STATUS</span><span>KILLS</span><span>ACCURACY</span><span>REVIVES</span></div>` +
+    (m.players || []).map((p) => `<div><span>${esc(p.name)}</span><span>${esc(p.status)}</span><span>${p.kills | 0}</span><span>${p.shots ? Math.round(((p.hits | 0) / p.shots) * 100) + '%' : '—'}</span><span>${p.revives | 0}</span></div>`).join('') + '</div>';
+  $('again').style.display = 'none'; $('emenu').textContent = 'RETURN TO LOBBY';
+  G.coopResult = m; show('end'); m.win ? G.audio.win() : G.audio.lose();
 }
 const compass = (dx, dz) => ['NORTH', 'NORTH-EAST', 'EAST', 'SOUTH-EAST', 'SOUTH', 'SOUTH-WEST', 'WEST', 'NORTH-WEST'][((Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) % 8) + 8) % 8];
 
@@ -384,8 +433,17 @@ function toast(msg, t) { $('toast').textContent = msg; $('toast').style.opacity 
 function hitMark(kill, head) { hitT = kill ? 0.3 : head ? 0.2 : 0.14; $('hitm').className = kill ? 'k' : head ? 'h' : ''; }
 function setText(id, v) { if (hudCache[id] !== v) { hudCache[id] = v; $(id).innerHTML = v; } }
 function setStyle(id, prop, v) { const k = id + prop; if (hudCache[k] !== v) { hudCache[k] = v; $(id).style[prop] = v; } }
+let mphudT = 0;
+function updateMPHUD() { // teammates: health, state, link
+  const S = G.mp, el = $('mphud'); if (!S) return;
+  const rows = [`<div class="me"><b>${esc(G.mpLobby.me() ? G.mpLobby.me().name : 'YOU')}</b><span>${G.player.kia ? 'KIA' : G.player.downed ? 'DOWN' : Math.ceil(G.player.hp)}</span><i>${G.mpLobby.net.connected ? (G.mpLobby.me() ? G.mpLobby.me().ping : 0) + ' ms' : 'OFFLINE'}</i></div>`];
+  for (const rp of S.players.values()) rows.push(`<div class="${rp.kia ? 'kia' : rp.downed ? 'down' : !rp.connected ? 'gone' : ''}"><b>${esc(rp.name)}</b><span>${rp.left ? 'LEFT' : !rp.connected ? 'LINK LOST' : rp.kia ? 'KIA' : rp.downed ? 'DOWN ' + Math.ceil(rp.bleed) + 's' : Math.ceil(rp.hp)}</span><i class="bar"><u style="width:${Math.max(0, rp.hp)}%"></u></i></div>`);
+  el.innerHTML = '<label>TEAM</label>' + rows.join('');
+}
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 function updateHUD(dt) {
   const P = G.player, s = P.slot, w = s.st, W = G.world;
+  if (G.mp && (mphudT -= dt) <= 0) { mphudT = 0.25; updateMPHUD(); }
   setText('hpn', Math.ceil(P.hp));
   const hw = Math.round(P.hp) + '%'; if (hudCache.hw !== hw) { hudCache.hw = hw; $('hpf').style.width = hw; $('hpf').style.background = P.hp < 35 ? '#ff5a4a' : P.hp < 60 ? '#e8b04a' : 'var(--g)'; }
   const u = P.use;
@@ -445,28 +503,42 @@ function updateHUD(dt) {
   setText('mark', G.range ? '' : (G.mission.complete ? 'EXTRACT ' : 'OBJECTIVE ') + Math.round(d) + ' M');
 }
 
+const NOINP = { k: {}, e: false };
+function applyPickup(pk) {
+  const P = G.player, med = pk.kind === 'med'; G.audio.pickup();
+  if (med) { P.inv.med = Math.min(4, P.inv.med + 1); P.inv.stim = Math.min(4, P.inv.stim + 1); }
+  else { for (const s of P.slots) if (!s.st.melee) s.reserve = Math.min(s.st.reserve * 2, s.reserve + s.st.mag * 2); P.inv.frag = Math.min(4, P.inv.frag + 1); P.inv.flash = Math.min(4, P.inv.flash + 1); }
+  toast(med ? '+1 MEDKIT  +1 STIM' : 'AMMUNITION RESUPPLIED  +1 FRAG  +1 FLASH', 1.8);
+}
 function updateMission(dt) {
   const P = G.player, W = G.world, inp = G.inp;
   G.time += dt; G.stats.maxSec = Math.max(G.stats.maxSec, G.sec.level);
   const near = (x, z, r) => Math.hypot(x - P.pos.x, z - P.pos.z) < r, Mi = G.mission, ex = Mi.def.exit.pos;
-  let prompt = Mi.update(dt, inp);
-  if (Mi.failed) return endMission(false, Mi.failed);
-  if (Mi.complete && near(ex[0], ex[2], 3.2)) { if (Mi.civNear()) return endMission(true); prompt = `Wait for the ${Mi.civ.kind === 'hvt' ? 'target' : 'hostage'} to reach you`; }
-  for (const pk of G.pickups) {
+  const out = P.downed || P.kia; // a downed operator cannot interact (the mission timers still run on the host)
+  let prompt = Mi.update(dt, out ? NOINP : inp);
+  if (G.mp) {
+    if (G.mp.host) { const r = G.mp.checkEnd(); if (r) return G.mp.finish(r.win, r.reason); }
+    if (G.mp.revivePrompt) prompt = G.mp.revivePrompt;
+    if (Mi.complete && near(ex[0], ex[2], 4.5) && !out) { const [a, b] = G.mp.extract; prompt = prompt || (Mi.civNear() ? `EXTRACTION — ${a} / ${b} OPERATORS IN POSITION` : `Wait for the ${Mi.civ.kind === 'hvt' ? 'target' : 'hostage'} to reach you`); }
+    if (out) prompt = P.kia ? '' : `YOU ARE DOWN — ${Math.ceil(G.mp.local.bleed)} s · A TEAMMATE CAN REVIVE YOU`;
+  } else {
+    if (Mi.failed) return endMission(false, Mi.failed);
+    if (Mi.complete && near(ex[0], ex[2], 3.2)) { if (Mi.civNear()) return endMission(true); prompt = `Wait for the ${Mi.civ.kind === 'hvt' ? 'target' : 'hostage'} to reach you`; }
+  }
+  for (let pi = 0; pi < G.pickups.length && !out; pi++) {
+    const pk = G.pickups[pi];
     if (pk.taken || !near(pk.x, pk.z, 1.9)) continue;
     const med = pk.kind === 'med';
     prompt = prompt || `<b>E</b>${med ? 'Take medical supplies' : 'Take ammunition and grenades'}`;
     if (inp.e && !prompt.includes(Mi.stage ? Mi.stage.prompt : '\u0000')) {
-      pk.taken = true; G.scene.remove(pk.mesh); G.audio.pickup();
-      if (med) { P.inv.med = Math.min(4, P.inv.med + 1); P.inv.stim = Math.min(4, P.inv.stim + 1); }
-      else { for (const s of P.slots) if (!s.st.melee) s.reserve = Math.min(s.st.reserve * 2, s.reserve + s.st.mag * 2); P.inv.frag = Math.min(4, P.inv.frag + 1); P.inv.flash = Math.min(4, P.inv.flash + 1); }
-      toast(med ? '+1 MEDKIT  +1 STIM' : 'AMMUNITION RESUPPLIED  +1 FRAG  +1 FLASH', 1.8);
+      if (G.mp) G.mp.request({ k: 'pick', i: pi }); // shared crates: the host hands them out
+      else { pk.taken = true; G.scene.remove(pk.mesh); applyPickup(pk); }
     }
   }
   inp.e = false;
   const pe = $('prompt'); if (hudCache.pr !== prompt) { hudCache.pr = prompt; pe.innerHTML = prompt; pe.style.display = prompt ? 'block' : 'none'; }
-  const med = P.use && P.use.type === 'med', hk = Mi.hold > 0 || med;
-  setStyle('hack', 'display', hk ? 'block' : 'none'); if (hk) $('hackf').style.width = (med ? P.use.t / P.use.dur : Mi.hold / ((Mi.stage && Mi.stage.hold) || 1)) * 100 + '%';
+  const med = P.use && P.use.type === 'med', rv = G.mp && G.mp.reviveT > 0, hk = Mi.hold > 0 || med || rv;
+  setStyle('hack', 'display', hk ? 'block' : 'none'); if (hk) $('hackf').style.width = (rv ? G.mp.reviveT / 3.5 : med ? P.use.t / P.use.dur : Mi.hold / ((Mi.stage && Mi.stage.hold) || 1)) * 100 + '%';
   // ambient light animation
   for (const d of W.dyn) d.l.intensity = d.base * (d.kind === 'fire' ? 0.75 + Math.sin(G.time * 11) * 0.12 + Math.random() * 0.2 : Math.sin(G.time * 31) > 0.86 || Math.random() < 0.02 ? 0.25 : 1);
   G.exLight.intensity = Mi.complete ? 14 + Math.sin(G.time * 4) * 5 : 3;
@@ -507,10 +579,9 @@ function step(dt) {
   G.inp.mx = G.inp.my = 0;
   FRUST.setFromProjectionMatrix(PV.multiplyMatrices(G.camera.projectionMatrix, G.camera.matrixWorldInverse));
   const t1 = performance.now();
-  for (const e of G.enemies) e.update(dt);
-  for (const c of G.civs) c.update(dt);
-  G.sec.update(dt);
-  if (G.spawnQ.length) G.spawnQ.shift()();
+  if (!G.mp) { for (const e of G.enemies) e.update(dt); for (const c of G.civs) c.update(dt); }
+  else if (G.mp.host) { G.mp.shooter = null; G.mp.hostAI(dt); }
+  if (!G.mp || G.mp.host) { G.sec.update(dt); if (G.spawnQ.length) G.spawnQ.shift()(); }
   const t2 = performance.now();
   G.gren.update(dt);
   if (G.range) G.range.update(dt);
@@ -518,11 +589,12 @@ function step(dt) {
   G.fx.update(dt);
   const t3 = performance.now();
   updateMission(dt);
+  if (G.mp) G.mp.update(dt);
   const t4 = performance.now();
   if (G.state === 'playing' && !G.player.dead) updateHUD(dt);
   const t5 = performance.now();
   PROF.player = t1 - t0; PROF.ai = t2 - t1; PROF.world = t3 - t2; PROF.mission = t4 - t3; PROF.hud = t5 - t4; PROF.total = t5 - t0; PROF.rays = RAYSTATS.rays; PROF.boxes = RAYSTATS.boxes;
-  if (G.state !== 'playing') return;
+  if (G.state !== 'playing' || G.mp) return;
   if (G.player.dead) return endMission(false);
 }
 G.step = step;
@@ -541,7 +613,7 @@ function frame(now) {
   const P = G.pacing, ms = now - last, dt = Math.min(0.05, ms / 1000); last = now;
   const f0 = performance.now();
   P.feed(ms); P.gpuPoll();
-  if (G.state === 'playing') {
+  if (G.state === 'playing' || (G.mp && G.state === 'paused')) {
     if (inFirst) { const age = f0 - inFirst; if (age >= 0 && age < 500) { P.inputAge = P.inputT && f0 - P.inputT < 2000 ? P.inputAge + (age - P.inputAge) * 0.1 : age; P.inputT = f0; } inFirst = 0; } // oldest unconsumed mouse event -> this frame
     try { step(dt); } // mouse look is applied per event delta, independent of dt
     catch (e) { return loopFailed('SIMULATION ERROR', e); }
@@ -685,7 +757,7 @@ function menuBuild() {
   $('bars').innerHTML = bar('DAMAGE', (st.dmg * (st.pellets || 1)) / 1.2) + bar('FIRE RATE', st.rpm / 9) + bar('CONTROL', 100 - st.recoil * 20) + bar('HANDLING', 100 - st.adsT * 230) + bar('STEALTH', 100 - st.noise * 1.9);
   $('losum').innerHTML = `${WEAPONS[L.primary].name} <span style="color:var(--a)">${attText(L.primary, L.att[L.primary])}</span><br>${WEAPONS[L.secondary].name} <span style="color:var(--a)">${attText(L.secondary, L.att[L.secondary])}</span><br>Combat knife · ${KITS[L.kit].name} kit — ${KITS[L.kit].desc}`;
   $('brief').innerHTML = `<b style="color:#fff">${MISSIONS[G.sel.mission].name}</b> — ${MISSIONS[G.sel.mission].desc}. ${LENGTHS[G.sel.length].desc}.<br>${BRIEF[G.sel.map]}<br>${AI_NOTE[G.sel.ai]}<br><span style="color:#74838a">Insertion point, objective locations and extraction change from run to run; the exact sequence is shown before you begin.</span>`;
-  saveLoadout(L); menuRefresh();
+  saveLoadout(L); menuRefresh(); if (G.mpLobby) G.mpLobby.loadoutChanged();
 }
 document.querySelectorAll('.nav').forEach((b) => b.addEventListener('click', () => {
   M.tab = b.dataset.tab; document.querySelectorAll('.nav').forEach((x) => x.classList.toggle('sel', x === b));
@@ -720,7 +792,32 @@ setOverlay(G.overlay);
 document.querySelectorAll('.opts[data-k="quality"] .opt').forEach((o) => o.classList.toggle('sel', o.dataset.v === G.sel.quality));
 const begin = () => { G.audio.init(); if (G.audio.master) G.audio.master.gain.value = G.vol; startMission(); };
 $('start').onclick = () => { G.sel.mode = 'mission'; begin(); }; $('train').onclick = () => { G.sel.mode = 'range'; begin(); }; $('again').onclick = begin; $('prestart').onclick = begin;
-$('brgo').onclick = beginMission; $('brback').onclick = toMenu;
+$('brgo').onclick = () => { if (G.mp) { if (G.state === 'playing') { show(null); if (!TEST) lock(); } return; } beginMission(); };
+$('brback').onclick = () => { if (G.mp && G.mpLobby) G.mpLobby.leave(); toMenu(); };
+const openTab = (t) => { const b = document.querySelector(`.nav[data-tab="${t}"]`); if (b) b.click(); };
+G.mpLobby = initLobby(G, {
+  openTab, toast: (m, t) => toast(m, t), hitMark: (d, h) => hitMark(d, h), applyPickup,
+  radio: (text) => { G.audio.radio(); $('subt').innerHTML = `<b>RADIO</b>${esc(text)}`; $('subt').style.opacity = 1; subT = 2.8; },
+  // the leader started a mission: build it with the shared seed, then tell the server we are loaded
+  startCoop: (m, L) => {
+    const st = m.settings; Object.assign(G.sel, { map: st.map, mission: st.mission, length: st.length, ai: st.ai, seed: m.seed, layout: null, mode: 'mission' });
+    const mine = m.players.find((p) => p.id === L.id); if (mine && mine.loadout) { G.loadout.primary = mine.loadout.primary; G.loadout.secondary = mine.loadout.secondary; G.loadout.kit = mine.loadout.kit; Object.assign(G.loadout.att, mine.loadout.att); }
+    if (G.mp) { G.mp.dispose(); G.mp = null; }
+    G.mp = createSession(G, G.mpHooks, L, m);
+    G.audio.init(); if (G.audio.master) G.audio.master.gain.value = G.vol;
+    startMission();
+  },
+});
+G.mpHooks = {
+  toast: (m, t) => toast(m, t), hitMark: (d, h) => hitMark(d, h), applyPickup,
+  radio: (text) => { G.audio.radio(); $('subt').innerHTML = `<b>RADIO</b>${esc(text)}`; $('subt').style.opacity = 1; subT = 2.8; },
+  go: () => { // every operator has loaded: the mission is live for everyone at once
+    G.state = 'playing'; last = performance.now(); show(null);
+    toast(MISSIONS[G.mission.def.type].name + ' — ' + G.mission.def.stages[0].title.toUpperCase() + (TEST ? '' : ' · CLICK TO TAKE CONTROL'), 4);
+  },
+  endCoop,
+  partyEnded: (text) => { if (G.state !== 'menu') toMenu(); openTab('mp'); toast(text.toUpperCase(), 5); },
+};
 $('fatalmenu').onclick = () => { $('fatal').classList.remove('on'); G.loopErrors = 0; if (G.state !== 'menu') toMenu(); };
 $('resume').onclick = resume; $('pmenu').onclick = toMenu; $('emenu').onclick = toMenu;
 // night-vision grain

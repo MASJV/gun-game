@@ -169,8 +169,8 @@ export class Mission {
   // per-frame: interaction with the current objective. Returns the prompt text (or '').
   update(dt, inp) {
     const G = this.g, P = G.player, s = this.stage; this.t += dt;
-    for (let i = this.timers.length - 1; i >= 0; i--) if ((this.timers[i].t -= dt) <= 0) { const f = this.timers[i].fn; this.timers.splice(i, 1); f(); }
-    if (this.civ && this.civ.dead) this.fail(this.civ.kind === 'hvt' ? 'THE TARGET WAS KILLED' : 'THE HOSTAGE WAS KILLED');
+    if (!G.mp || G.mp.host) for (let i = this.timers.length - 1; i >= 0; i--) if ((this.timers[i].t -= dt) <= 0) { const f = this.timers[i].fn; this.timers.splice(i, 1); f(); }
+    if (this.civ && this.civ.dead && (!G.mp || G.mp.host)) this.fail(this.civ.kind === 'hvt' ? 'THE TARGET WAS KILLED' : 'THE HOSTAGE WAS KILLED');
     if (!s) return '';
     const near = (p, r = 2.5) => Math.hypot(p[0] - P.pos.x, p[2] - P.pos.z) < r && Math.abs(p[1] - P.pos.y) < 2.2;
     let target = null, prompt = '';
@@ -183,11 +183,25 @@ export class Mission {
       this.hold += dt;
       if (!need || this.hold >= need) {
         this.hold = 0;
-        if (s.civ) { target.secure(); this.finish(s); }
-        else if (s.kind === 'search' && target.k !== s.correct && this.items.filter((it) => it.stage === this.i && !it.taken).length > 1) { target.taken = true; G.scene.remove(target.mesh); G.toast('NOTHING HERE — CHECK THE NEXT LOCATION', 2.5); G.audio.click(0.5); }
-        else { target.taken = true; if (target.mesh.screen) target.mesh.screen.material.color.setHex(0xffb648); else if (s.kind !== 'sab:charge') G.scene.remove(target.mesh); for (const it of this.items) if (it.stage === this.i && !it.taken && s.kind === 'search') { it.taken = true; G.scene.remove(it.mesh); } this.finish(s); }
+        // multiplayer client: the host decides; ask once and wait for its mission state
+        if (G.mp && !G.mp.host) { if (!(this.asked > this.t)) { this.asked = this.t + 1; G.mp.request({ k: 'obj', stage: this.i, item: s.civ ? -1 : this.items.indexOf(target) }); } }
+        else this.interact(target);
       }
     } else this.hold = Math.max(0, this.hold - dt * 2);
     return prompt;
+  }
+  // completes the current objective at target (an item, or the civilian) - the local player or, on a multiplayer
+  // host, a teammate's validated request
+  interact(target) {
+    const G = this.g, s = this.stage; if (!s) return false;
+    if (s.civ) { if (!target.canSecure()) return false; target.secure(); this.finish(s); return true; }
+    if (target.stage !== this.i || target.taken) return false;
+    if (s.kind === 'search' && target.k !== s.correct && this.items.filter((it) => it.stage === this.i && !it.taken).length > 1) { this.takeItem(target); G.toast('NOTHING HERE — CHECK THE NEXT LOCATION', 2.5); G.audio.click(0.5); return true; }
+    this.takeItem(target); for (const it of this.items) if (it.stage === this.i && !it.taken && s.kind === 'search') this.takeItem(it);
+    this.finish(s); return true;
+  }
+  takeItem(it) { // also used by multiplayer clients when the host's mission state arrives
+    if (it.taken) return; it.taken = true; const s = this.def.stages[it.stage];
+    if (it.mesh.screen) it.mesh.screen.material.color.setHex(0xffb648); else if (s.kind !== 'sab:charge') this.g.scene.remove(it.mesh);
   }
 }

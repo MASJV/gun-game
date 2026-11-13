@@ -324,7 +324,8 @@ export class Enemy {
     const D = G.v3.set(Math.sin(yaw) * cp, Math.sin(pit), Math.cos(yaw) * cp), a = G.v1.set(ox, oy, oz);
     const r = G.trace(a, D, 120, this), b = G.v2.set(ox + D.x * r.d, oy + D.y * r.d, oz + D.z * r.d); // same resolver as the player's rounds
     G.fx.tracer(a, b, 0xffb070);
-    if (r.kind === 'player') P.damage(DMG, this.pos, { name: this.type.name, dist: this.pd, x: this.pos.x, z: this.pos.z });
+    if (G.mp) G.mp.enemyFired(this, a, b, r);
+    if (r.kind === 'player') (r.player || P).damage(DMG, this.pos, { name: this.type.name, dist: this.pd, x: this.pos.x, z: this.pos.z });
     else { if (r.kind === 'world') G.fx.impact(b, V2.set(r.wh.nx, r.wh.ny, r.wh.nz), r.wh.c.mat); else if (r.kind === 'civ') r.e.damage(DMG); G.nearMiss(ox, oy, oz, D.x, D.y, D.z); }
     ch.fire(); G.enemyShotSound(this); G.sound(this.pos, 30, 'ally', this);
     return true;

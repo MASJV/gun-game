@@ -39,7 +39,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
   await run('menu', async () => {
     const m = await p.evaluate(() => { document.querySelector('[data-tab="loadout"]').click(); document.querySelector('.opts[data-k="primary"] [data-v="ak"]').click(); document.querySelector('#optic [data-v="holo"]').click(); document.querySelector('#atts [data-v="muzzle"]').click();
       const G = window.__SP; return { tabs: document.querySelectorAll('.nav').length, ai: [...document.querySelectorAll('.opts[data-k="ai"] .opt')].map((o) => o.dataset.v), primary: G.loadout.primary, att: G.loadout.att.ak, sum: document.getElementById('losum').textContent }; });
-    check('menu: PLAY / LOADOUT / TRAINING / SETTINGS / CONTROLS tabs', m.tabs === 5);
+    check('menu: PLAY / LOADOUT / MULTIPLAYER / TRAINING / SETTINGS / CONTROLS tabs', m.tabs === 6);
     check('menu: exactly Recruit / Tactical / Elite Squad', m.ai.join() === 'recruit,tactical,elite');
     check('loadout: weapon + optic + suppressor selection is stored', m.primary === 'ak' && m.att.optic === 'holo' && m.att.muzzle === true, m.sum);
   });

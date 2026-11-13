@@ -119,6 +119,20 @@ h1 span{color:var(--g)}
 @keyframes nz{0%{transform:translate(0,0)}25%{transform:translate(-31px,17px)}50%{transform:translate(23px,-41px)}75%{transform:translate(-47px,-9px)}}
 @media(max-width:900px){#side{width:190px;padding-left:20px}h1{font-size:28px}#content{width:calc(100vw - 200px)}}
 #fatal{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:100;width:min(560px,92vw);padding:22px 26px;background:rgba(18,10,10,.96);border:1px solid #ff6a5a;color:#f2e6e4;font:13px/1.5 system-ui,sans-serif;letter-spacing:.04em}#fatal.on{display:block}#fatal b{display:block;color:#ff6a5a;font-size:16px;letter-spacing:.14em;margin-bottom:8px}#fatal p{margin:0 0 14px;word-break:break-word}
+.inp{width:100%;box-sizing:border-box;background:#11171b;color:#dfe7ea;border:1px solid rgba(255,255,255,.2);padding:8px 10px;font:inherit;font-size:13px;letter-spacing:.04em}.inp:focus{outline:1px solid var(--g)}
+.inp.code{width:110px;text-transform:uppercase;letter-spacing:.3em;text-align:center}.mprow{display:flex;gap:10px;align-items:center;margin:8px 0;flex-wrap:wrap}.mprow .or{color:#74838a;font-size:12px}.mprow .inp{flex:1}
+.mpmsg{min-height:18px;font-size:12px;margin:6px 0}.mphelp{font-size:11px;color:#8a979d;margin:8px 0 0}.mpcode{font-size:40px;letter-spacing:.35em;color:var(--g);margin:2px 0 6px}
+#mpplayers .mpp{display:grid;grid-template-columns:1.1fr 1.8fr 110px 60px;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.07);font-size:12px;align-items:center}#mpplayers .mpp.me{background:rgba(159,232,176,.05)}
+#mpplayers em{font-style:normal;font-size:9px;letter-spacing:.12em;color:#0b0f12;background:var(--a);padding:1px 4px;margin-left:4px}#mpplayers em.you{background:var(--g)}#mpplayers .lo small{color:#8a979d}
+#mpplayers .st{font-size:10px;letter-spacing:.12em;color:#e8b04a}#mpplayers .st.ok{color:var(--g)}#mpplayers .st.bad{color:#ff6a5a}#mpplayers .pg{color:#74838a;font-size:11px;text-align:right}
+.mpgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:10px;letter-spacing:.12em;color:#8a979d}.mpgrid select{display:block;width:100%;margin-top:4px;background:#11171b;color:#dfe7ea;border:1px solid rgba(255,255,255,.2);padding:5px;font:inherit;font-size:12px}.mpgrid .chk{grid-column:1/-1;display:flex;gap:6px;align-items:center}
+#mptags{position:fixed;inset:0;pointer-events:none;z-index:4}.mptag{position:absolute;transform:translate(-50%,-100%);font:11px/1.2 system-ui,sans-serif;letter-spacing:.06em;color:#bff5cc;text-shadow:0 1px 2px #000;text-align:center;white-space:nowrap}
+.mptag i{display:block;width:44px;height:3px;margin:2px auto 0;background:rgba(0,0,0,.5)}.mptag u{display:block;height:100%;background:var(--g)}.mptag.down{color:#ffb35a}.mptag.down u{background:#ffb35a}.mptag.kia{color:#ff6a5a}.mptag.gone{color:#8a979d}
+#mphud{display:none;position:fixed;left:18px;top:150px;z-index:5;font:11px/1.35 system-ui,sans-serif;letter-spacing:.06em;color:#dfe7ea;background:rgba(8,12,15,.55);padding:8px 10px;min-width:170px}#mphud label{font-size:9px;letter-spacing:.2em;color:#8a979d}
+#mphud div{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin-top:4px}#mphud div i{grid-column:1/-1;font-style:normal;color:#74838a;font-size:10px}#mphud .bar{height:3px;background:rgba(255,255,255,.12)}#mphud .bar u{display:block;height:100%;background:var(--g)}
+#mphud .down span{color:#ffb35a}#mphud .kia span{color:#ff6a5a}#mphud .gone span{color:#8a979d}
+#mplink_status{display:none;position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:60;background:#3a1a14;color:#ffd2c8;border:1px solid #ff6a5a;padding:6px 14px;font:12px system-ui,sans-serif;letter-spacing:.1em}
+#endstats .team{grid-column:1/-1;margin-top:10px;font-size:12px}#endstats .team div{display:grid;grid-template-columns:1.4fr 1fr .6fr .8fr .7fr;gap:6px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.06)}#endstats .team .h{color:#8a979d;font-size:10px;letter-spacing:.12em}
 </style>
 </head>
 <body>
@@ -127,6 +141,9 @@ h1 span{color:var(--g)}
 <div id="scope"><u class="l"></u><u class="r"></u><u class="b"></u><u class="m"></u><div id="zoomv"></div></div>
 <div id="flashov"></div>
 <div id="perfov"></div>
+<div id="mptags"></div>
+<div id="mphud"></div>
+<div id="mplink_status"></div>
 <div id="fatal" role="alert"><b></b><p></p><button class="btn" id="fatalmenu">RETURN TO MENU</button></div>
 
 <div id="hud">
@@ -157,6 +174,7 @@ h1 span{color:var(--g)}
     <div class="sub">TACTICAL INFILTRATION</div>
     <button class="nav sel" data-tab="play">PLAY</button>
     <button class="nav" data-tab="loadout">LOADOUT</button>
+    <button class="nav" data-tab="mp">MULTIPLAYER<span id="mpnavbadge"></span></button>
     <button class="nav" data-tab="training">TRAINING</button>
     <button class="nav" data-tab="settings">SETTINGS</button>
     <button class="nav" data-tab="controls">CONTROLS</button>
@@ -187,6 +205,28 @@ h1 span{color:var(--g)}
         <div class="bars" id="bars"></div></div>
       <div class="grp"><label>SLOT 3 — MELEE</label><div class="opts"><button class="opt sel">Combat knife<small>silent · lethal from behind or on unaware guards</small></button></div></div>
       <div class="grp"><label>EQUIPMENT KIT</label><div class="opts" data-k="kit"></div></div>
+    </div>
+    <div class="tab" id="t-mp">
+      <div id="mpconn">
+        <div class="grp"><label>YOUR NAME</label><input class="inp" id="mpname" maxlength="16" placeholder="Operator name" autocomplete="off"></div>
+        <div class="grp"><label>HOST ADDRESS</label><input class="inp" id="mpaddr" placeholder="192.168.1.20:8787  (or paste an invitation link)" autocomplete="off"></div>
+        <div class="mprow"><button class="btn" id="mpcreate">CREATE PARTY</button><span class="or">or</span><input class="inp code" id="mpcode" maxlength="5" placeholder="CODE" autocomplete="off"><button class="btn alt" id="mpjoin">JOIN PARTY</button></div>
+        <p id="mperr" class="mpmsg"></p>
+        <div class="panel"><h3>CO-OP ON YOUR LOCAL NETWORK (2–4 PLAYERS)</h3><p>
+          <b>Host:</b> in the game folder run <code>npm run lan</code> (Node 18+, no internet needed). Open the address it prints, then <b>CREATE PARTY</b>.<br>
+          <b>Friends</b> on the same Wi-Fi / LAN open the host’s <i>network</i> address (e.g. <code>http://192.168.1.20:8787/</code>) or the invitation link, enter a name and the 5-letter code, then <b>JOIN PARTY</b>.<br>
+          The party code only identifies the party on that host; it cannot reach a computer by itself. The host’s game runs the shared mission — if the host leaves, the party ends. Solo play never needs the server.</p></div>
+      </div>
+      <div id="mplobby" style="display:none">
+        <div class="panel mpcodebox"><h3>PARTY CODE</h3><div class="mpcode" id="mpcodev"></div>
+          <div class="mprow"><input class="inp" id="mplink" readonly><button class="btn alt sm" id="mpcopy">COPY LINK</button></div><p id="mplan" class="mphelp"></p></div>
+        <div class="panel"><h3>OPERATORS <span id="mpcount"></span></h3><div id="mpplayers"></div><p class="mphelp">Each operator sets their own weapons and kit in the LOADOUT tab — changes appear here.</p></div>
+        <div class="panel"><h3>MISSION <small>(set by the party leader)</small></h3>
+          <div class="mpgrid"><label>MAP<select id="mps_map"></select></label><label>MISSION<select id="mps_mission"></select></label><label>LENGTH<select id="mps_length"></select></label><label>ENEMY<select id="mps_ai"></select></label>
+          <label class="chk"><input type="checkbox" id="mps_ff"> FRIENDLY FIRE</label></div></div>
+        <div class="mprow"><button class="btn" id="mpready">READY</button><button class="btn" id="mpstart" disabled>WAITING FOR TEAM</button><button class="btn alt" id="mpleave">LEAVE PARTY</button></div>
+        <p id="mpmsg" class="mpmsg"></p>
+      </div>
     </div>
     <div class="tab" id="t-training">
       <div class="panel" style="margin-bottom:14px"><h3>TRAINING RANGE</h3>
