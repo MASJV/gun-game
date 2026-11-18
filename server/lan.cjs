@@ -28,9 +28,24 @@ function isLocalAddress(a) {
   if (/^(fc|fd)[0-9a-f]{2}:/i.test(a) || /^fe80:/i.test(a)) return true;
   return false;
 }
-function lanAddresses() {
+// The machine's adapters. SP_TEST_IFACES (JSON in the os.networkInterfaces() shape) replaces them for tests only.
+function systemInterfaces() {
+  if (process.env.SP_TEST_IFACES) {
+    try { return JSON.parse(process.env.SP_TEST_IFACES); } catch (e) { console.error('SP_TEST_IFACES is not valid JSON; using the real adapters'); }
+  }
+  return os.networkInterfaces();
+}
+// External IPv4 addresses friends can reach. Always returns an array.
+function lanAddresses(ifaces = systemInterfaces()) {
   const out = [];
-  for (const [name, list] of Object.entries(os.networkInterfaces())) for (const i of list || []) if ((i.family === 'IPv4' || i.family === 4) && !i.internal) // Node 18.0-18.3 reported the family as a number out.push({ name, address: i.address });
+  for (const [name, list] of Object.entries(ifaces || {})) {
+    for (const i of Array.isArray(list) ? list : []) {
+      const ipv4 = i && (i.family === 'IPv4' || i.family === 4); // Node 18.0-18.3 reported the family as the number 4
+      if (ipv4 && !i.internal && typeof i.address === 'string' && i.address) {
+        out.push({ name, address: i.address });
+      }
+    }
+  }
   return out;
 }
 
@@ -273,4 +288,4 @@ server.listen(PORT, '0.0.0.0', () => { // all interfaces, but see the address po
 server.on('error', (e) => { console.error(e.code === 'EADDRINUSE' ? `Port ${PORT} is already in use — try: npm run lan -- --port ${PORT + 1}` : e.message); process.exit(1); });
 }
 if (require.main === module) main();
-module.exports = { isLocalAddress, parseLanAddresses: lanAddresses };
+module.exports = { isLocalAddress, lanAddresses };

@@ -2,7 +2,7 @@
 
 An experimental tactical first-person shooter that runs in the browser (Three.js / WebGL). Infiltrate a forest outpost
 or an industrial warehouse at night, against guards who take cover, flank, radio in reports and run for the alarm.
-Play generated missions solo, or with 2–4 friends on your local network.
+Play generated missions solo, or in LAN co-op with 2–4 players total on your local network.
 
 ![Forest Outpost at night: a guard on patrol by the compound fence, objective marker and HUD (real in-game frame)](docs/media/gameplay-solo.png)
 

@@ -337,6 +337,29 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   check('D. host callbacks are restored after every co-op session (lobby return and leaving), and a later solo mission runs with the originals and no session', unwrapped1.every(Boolean) && solo.state === 'playing' && solo.mp === null && solo.originals.every(Boolean), { unwrapped1, solo });
   for (const p of [X, Y, Z]) await p.ctx.close().catch(() => {});
 
+  // --------------------------------------------------------------- invitation link from a localhost-created party (LAN adapter present)
+  // A second server sees one external adapter at 127.0.0.2 (SP_TEST_IFACES, test-only): like a real LAN address it
+  // reaches this machine, so the link it produces can actually be opened by another browser.
+  {
+    const P2 = PORT + 1, iface = JSON.stringify({ eth0: [{ address: '127.0.0.2', family: 'IPv4', internal: false }], lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true }] });
+    const s2 = spawn(process.execPath, [path.join(ROOT, 'server', 'lan.cjs'), '--port', String(P2)], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, SP_TEST_IFACES: iface } });
+    let banner = ''; s2.stdout.on('data', (d) => { banner += d; });
+    await new Promise((r) => { const t0 = Date.now(); const tick = () => (banner.includes('Ctrl+C') || Date.now() - t0 > 5000 ? r() : setTimeout(tick, 50)); tick(); });
+    const H2 = await client('Invite-host', `http://127.0.0.1:${P2}/?test`);
+    await H2.click('[data-tab="mp"]'); await H2.fill('#mpname', 'Host'); await H2.fill('#mpaddr', `127.0.0.1:${P2}`); await H2.click('#mpcreate');
+    await H2.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.getElementById('mpcodev').textContent), null, { timeout: 15000 });
+    const inv = await H2.evaluate(() => ({ link: document.getElementById('mplink').value, help: document.getElementById('mplan').textContent, code: document.getElementById('mpcodev').textContent }));
+    const G2 = await client('Invite-guest', inv.link.replace('?join=', '?test&join=')); // the guest opens exactly the invitation (plus test mode)
+    const pre = await G2.evaluate(() => ({ tab: document.getElementById('t-mp').classList.contains('on'), code: document.getElementById('mpcode').value, addr: document.getElementById('mpaddr').value }));
+    await G2.fill('#mpname', 'Guest'); await G2.click('#mpjoin');
+    await H2.waitForFunction(() => document.querySelectorAll('#mpplayers .mpp').length === 2, null, { timeout: 15000 }).catch(() => {});
+    const joined = await H2.evaluate(() => [...document.querySelectorAll('#mpplayers .n')].map((e) => e.textContent));
+    check('invitation: a party created on http://127.0.0.1 invites via the LAN address (banner and link), and a second browser opening that link joins with the code filled in',
+      new RegExp(`Your network:\\s+http://127\\.0\\.0\\.2:${P2}/`).test(banner) && inv.link === `http://127.0.0.2:${P2}/?join=${inv.code}` && inv.help.includes(`http://127.0.0.2:${P2}/`) && pre.tab && pre.code === inv.code && pre.addr === `127.0.0.2:${P2}` && joined.some((n) => n.includes('Guest')),
+      { link: inv.link, pre, joined, bannerHasLan: banner.includes('127.0.0.2') });
+    await H2.ctx.close(); await G2.ctx.close(); s2.kill();
+  }
+
   // --------------------------------------------------------------- server restart
   const R = C[0];
   await R.evaluate(() => { document.getElementById('content').scrollTop = 0; }); // the tiny test viewport left the menu scrolled down
