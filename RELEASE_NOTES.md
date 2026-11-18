@@ -43,7 +43,10 @@ A polish and fix release of the v2.4 LAN co-op, prepared for public sharing. No 
 
 **Verification, all automated** (headless Chromium, software WebGL, one machine):
 
-E2E_LINE
+- Full `npm run e2e` matrix, run locally: 168/168 checks, all 56 missions won on foot, 0 page errors. Warehouse at the
+  default preset; forest at the Low preset, one length per browser session, because the software renderer ran out
+  of memory at medium in the test container. Two forest runs hit a harness click timeout and passed on a retry.
+- CI on a clean runner plays one mission end to end (`warehouse/rescue/quick`), not the full matrix.
 - `npm test` 122/122, `npm run servertest` 18/18, `npm run mptest` 31/31 and `npm run smoke` all passed.
 - Co-op was tested with 2–4 independent browser contexts on 127.0.0.1, not on separate devices or real Wi-Fi.
 

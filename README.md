@@ -100,8 +100,15 @@ Results for v2.4.1 (details in [`docs/MULTIPLAYER.md`](docs/MULTIPLAYER.md) and 
 | `npm run servertest` (LAN server protocol and safety) | 18 / 18 |
 | `npm run mptest` (co-op: real server, 2–4 browser contexts) | 31 / 31 |
 | `npm run smoke` (real menu flow, all mission types and the range) | passed, no page errors |
-| `npm run e2e` (real page, rendered-pixel checks, every map × mission × length played on foot) | E2E_RESULT |
-| GitHub Actions CI on a clean runner | build check, servertest, test, mptest, smoke and an e2e sample all passed |
+| `npm run e2e` (real page, rendered-pixel checks, every map × mission × length played on foot) | 168 / 168 checks, all 56 missions won on foot, 0 page errors (warehouse at the default preset, forest at Low; see below) |
+| GitHub Actions CI on a clean runner | build check, servertest, test, mptest, smoke and a one-mission e2e sample (`warehouse/rescue/quick`) all passed |
+
+**The full end-to-end matrix** (2 maps × 5 mission types × each length × 2 seeds = 56 missions) was run locally, not
+in CI. The Industrial Warehouse ran at the default graphics preset. The Forest Outpost ran at the Low preset, one
+mission length per browser session: at the medium preset the headless software renderer ran out of memory in this
+16 GB container, while the game's own memory stayed flat. Two forest runs hit a test-harness click timeout in the
+slow software renderer and passed on a retry; no game check failed. The walker was moved past tight spots 117 times
+in total.
 
 **How it was verified:** all of this is automated testing in headless Chromium, with software WebGL (SwiftShader),
 on one machine. No manual play-testing, no real-GPU testing and no test across separate physical devices on a real
