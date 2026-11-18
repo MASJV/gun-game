@@ -150,6 +150,24 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
     return i;
   });
   await wait(500);
+  // The frag stops against cover about 7 m from where it was aimed, near the 8 m edge of the blast, so a small drift
+  // of the guard left him undamaged (CI run 8). Once the host's frag is resting, the host puts the guard 1.5 m from it
+  // with a clear line, so the blast damage this check is about is well inside the radius.
+  const placed = A.evaluate(async (i) => {
+    const G = window.__SP, e = G.enemies[i], t0 = performance.now();
+    while (performance.now() - t0 < 6000) {
+      const n = G.gren.list.find((g) => g.type === 'frag' && g.fuse < 1.2);
+      if (n) {
+        for (let k = 0; k < 8; k++) {
+          const a = k * Math.PI / 4, x = n.pos.x + 1.5 * Math.cos(a), z = n.pos.z + 1.5 * Math.sin(a);
+          if (G.losB(n.pos.x, n.pos.y + 0.1, n.pos.z, x, 1, z)) { e.pos.set(x, 0, z); e.sync(); e.ch.refresh(); return [+x.toFixed(2), +z.toFixed(2)]; }
+        }
+        return 'no clear spot';
+      }
+      await new Promise((r) => setTimeout(r, 16));
+    }
+    return 'no frag on the host';
+  }, nadeTarget);
   const nade = await B.evaluate(async (i) => {
     const G = window.__SP, P = G.player, e = G.enemies[i]; P.pitch = 0.02; P.yaw = Math.atan2(-(e.pos.x - P.pos.x), -(e.pos.z - P.pos.z));
     const inv0 = P.inv.frag; while (P.throwSel !== 'frag') P.cycleThrow(); P.startUse('throw');
@@ -158,8 +176,9 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
     await until(() => G.mp.lastBoom, 6000); return { inv: inv0 - P.inv.frag, seen, boom: G.mp.lastBoom, dead: e.dead, left: G.gren.list.length };
   }, nadeTarget);
   console.log('host-fatal', await A.evaluate(() => document.getElementById('fatal').textContent), JSON.stringify(errs.slice(0, 3)));
+  const guardAt = await placed;
   const nadeHost = await A.evaluate((i) => ({ dead: window.__SP.enemies[i].dead, hp: Math.round(window.__SP.enemies[i].hp), boom: window.__SP.mp.lastBoom, left: window.__SP.gren.list.length }), nadeTarget);
-  check('grenade: the client throws a frag — the host simulates it, it explodes at the same spot on both screens, the guard takes blast damage (same alive/dead state everywhere), no copies left', nade.inv === 1 && nade.seen >= 1 && nade.left === 0 && nadeHost.left === 0 && nadeHost.hp < 100 && nade.dead === nadeHost.dead && nade.boom && nadeHost.boom && Math.hypot(nade.boom[0] - nadeHost.boom[0], nade.boom[2] - nadeHost.boom[2]) < 0.05, { client: nade, host: nadeHost });
+  check('grenade: the client throws a frag — the host simulates it, it explodes at the same spot on both screens, the guard takes blast damage (same alive/dead state everywhere), no copies left', nade.inv === 1 && nade.seen >= 1 && nade.left === 0 && nadeHost.left === 0 && nadeHost.hp < 100 && nade.dead === nadeHost.dead && nade.boom && nadeHost.boom && Math.hypot(nade.boom[0] - nadeHost.boom[0], nade.boom[2] - nadeHost.boom[2]) < 0.05, { client: nade, host: nadeHost, guardAt });
 
   // --------------------------------------------------------------- shared objectives, extraction, synchronized results
   await A.evaluate(() => { window.__SP.enemies.forEach((e) => { if (!e.dead) { e.percT = 1e9; e.los = false; e.detect = 0; e.waitT = 1e9; } }); }); // keep the guards out of the paperwork
