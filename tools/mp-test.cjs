@@ -133,7 +133,9 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   await placeB(); await wait(300);
   await A.evaluate(() => { const G = window.__SP, rp = [...G.mp.players.values()][0]; rp.damage(500, rp.pos, { name: 'test' }); });
   await B.waitForFunction(() => window.__SP.player.downed === true, null, { timeout: 10000 }).catch(() => {});
-  const down = await B.evaluate(() => [window.__SP.player.downed, document.getElementById('prompt').textContent]);
+  // the flag arrives with the host's message; the banner is drawn on the next HUD frame (CI run 12 read it in between)
+  await B.waitForFunction(() => /DOWN/.test(document.getElementById('prompt').textContent), null, { timeout: 5000 }).catch(() => {});
+  const down =await B.evaluate(() => [window.__SP.player.downed, document.getElementById('prompt').textContent]);
   const rev = await A.evaluate(async () => {
     const G = window.__SP, rp = [...G.mp.players.values()][0], P = G.player; P.pos.set(rp.pos.x + 0.8, rp.pos.y, rp.pos.z); P.vel.set(0, 0, 0);
     await new Promise((r) => setTimeout(r, 300)); const prompt = document.getElementById('prompt').textContent;
