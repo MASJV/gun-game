@@ -11,6 +11,8 @@
 - Run the relevant checks before integrating changes (see below).
 - For a requested release, verify that the intended changes are published on `main`, and that GitHub still uses
   `main` as the default branch.
+- Publish a release by pushing a `v<version>` tag, or by running Actions → Release → Run workflow on `main`. The
+  manual run tags the `main` commit with the `package.json` version. Either way, the workflow builds the ZIP.
 - Report the branch, the commit, the actual test results and the merge / release status.
 - Never discard unique work, and never force-push `main`, during cleanup. Check a branch for unique commits and open
   pull requests before deleting it. Keep `v1-stable`.
