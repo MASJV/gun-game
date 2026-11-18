@@ -13,7 +13,7 @@ Below: LAN co-op seen from the host with night vision on, teammate "Bravo" name-
 
 ## Play solo
 
-Download the latest release ZIP (or clone the repository) and open `index.html` in a desktop browser: Chrome, Edge or
+Download the [latest release ZIP](https://github.com/MASJV/shadow-protocol/releases/latest) (or clone the repository) and open `index.html` in a desktop browser: Chrome, Edge or
 Firefox. Nothing to install, no server, no internet connection needed. The game is pre-built in `dist/` with all
 models embedded.
 
