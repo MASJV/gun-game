@@ -1,6 +1,7 @@
 // LAN server protocol and safety checks with raw WebSocket clients (Node 22 built-in WebSocket) against a real
 // server process. No browser. Usage: node tools/server-test.cjs
 const path = require('path'), http = require('http'), net = require('net'), { spawn } = require('child_process');
+if (typeof WebSocket !== 'function') { console.error('tools/server-test.cjs needs Node 22 or newer (built-in WebSocket client). Hosting with server/lan.cjs needs only Node 18+.'); process.exit(2); }
 const PORT = 19000 + Math.floor(Math.random() * 500);
 const results = []; const check = (n, ok, info) => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${info !== undefined ? '  — ' + JSON.stringify(info) : ''}`); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

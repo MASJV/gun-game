@@ -108,6 +108,9 @@ export function initLobby(G, H) {
   try { nameEl.value = localStorage.getItem('sp_mpname') || ''; addrEl.value = localStorage.getItem('sp_mpaddr') || ''; } catch (e) { /* storage off */ }
   const served = /^https?:$/.test(location.protocol);
   if (served) { addrEl.value = location.host; addrEl.placeholder = location.host; }
+  // An HTTPS copy of the game (e.g. the online solo demo) cannot open ws:// connections to a LAN host: browsers block
+  // mixed content. Say so plainly instead of failing with a vague connection error.
+  if (location.protocol === 'https:') { $('mperr').textContent = 'This copy of the game is served over HTTPS (for example the online solo demo). Browsers block it from connecting to a LAN host — for co-op, open the host’s own address instead (http://<host-ip>:8787/, printed by "npm run lan").'; $('mperr').style.color = '#e8b04a'; }
   const q = /[?&]join=([A-Za-z0-9]{4,8})/.exec(location.search);
   if (q) { codeEl.value = q[1].toUpperCase(); H.openTab('mp'); }
   const msg = (t, bad) => { const e = L.code ? $('mpmsg') : $('mperr'); e.textContent = t || ''; e.style.color = bad ? '#ff7a6a' : '#9fe8b0'; };

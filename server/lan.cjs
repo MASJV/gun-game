@@ -30,7 +30,7 @@ function isLocalAddress(a) {
 }
 function lanAddresses() {
   const out = [];
-  for (const [name, list] of Object.entries(os.networkInterfaces())) for (const i of list || []) if (i.family === 'IPv4' && !i.internal) out.push({ name, address: i.address });
+  for (const [name, list] of Object.entries(os.networkInterfaces())) for (const i of list || []) if ((i.family === 'IPv4' || i.family === 4) && !i.internal) // Node 18.0-18.3 reported the family as a number out.push({ name, address: i.address });
   return out;
 }
 
