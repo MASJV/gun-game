@@ -7,9 +7,9 @@ Play generated missions solo, or in LAN co-op with 2–4 players total on your l
 ![Forest Outpost at night: a guard on patrol by the compound fence, objective marker and HUD (real in-game frame)](docs/media/gameplay-solo.png)
 
 *Real frames from the running game, captured in headless Chromium with software WebGL. Above: solo, Forest Outpost.
-Below: LAN co-op seen from the host, with teammate "Bravo" name-tagged and the TEAM panel.*
+Below: LAN co-op seen from the host with night vision on, teammate "Bravo" name-tagged, and the TEAM panel.*
 
-![Co-op in the Industrial Warehouse: a crouched teammate with a name tag, team health panel at the top left](docs/media/gameplay-coop.png)
+![Co-op in the Industrial Warehouse through night vision: a crouched teammate with a name tag, team health panel at the top left](docs/media/gameplay-coop.png)
 
 ## Play solo
 
