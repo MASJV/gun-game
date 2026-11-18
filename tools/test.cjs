@@ -269,8 +269,10 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('ai: every level uses cover and lean-peeks', ['recruit', 'tactical', 'elite'].every((a) => R[a].pct.COVER > 5 && R[a].leanFrames > 20), [R.recruit.pct.COVER, R.tactical.pct.COVER, R.elite.pct.COVER]);
     // Cover share is a statistical property of one random fight. Fights vary (CI once saw recruit 47 % vs tactical 46 %,
     // while ten local runs gave recruit 34-46 %, tactical 50-63 %, elite 52-62 %), so compare the mean of two fights.
-    const C2 = {}; for (const ai of ['recruit', 'tactical', 'elite']) { const second = await fight(ai); C2[ai] = (R[ai].pct.COVER + second.pct.COVER) / 2; }
-    check('ai: tactical and elite spend more time in cover than recruits (mean of two fights each)', C2.tactical > C2.recruit && C2.elite > C2.recruit, C2);
+    // One fight's cover share varies by about ±5 points (recruit 37-51 %, tactical 42-61 %, elite 50-59 % over six
+    // local runs) around a gap of about 9, so the profiles are compared on the mean of six fights each.
+    const C2 = {}; for (const ai of ['recruit', 'tactical', 'elite']) { let sum = R[ai].pct.COVER; for (let k = 1; k < 6; k++) sum += (await fight(ai)).pct.COVER; C2[ai] = +(sum / 6).toFixed(1); }
+    check('ai: tactical and elite spend more time in cover than recruits (mean of six fights each)', C2.tactical > C2.recruit && C2.elite > C2.recruit, C2);
     check('ai: peeks are short (about a second) and irregular, not a fixed rhythm', ['recruit', 'tactical', 'elite'].every((a) => R[a].peekSd > 0.2 && R[a].peekMean < 2.2), [R.recruit.peekMean, R.tactical.peekMean, R.elite.peekMean, R.recruit.peekSd, R.tactical.peekSd, R.elite.peekSd]);
     check('ai: objective stays defended during the fight', R.tactical.defenders >= 2 && R.elite.defenders >= 2, [R.recruit.defenders, R.tactical.defenders, R.elite.defenders]);
     check('ai: security escalates to ALERT or LOCKDOWN', R.tactical.sec >= 2 && R.elite.sec >= 2, [R.recruit.sec, R.tactical.sec, R.elite.sec]);
@@ -307,6 +309,9 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       const G = window.__SP, P = G.player, o = {}, V = G.v1.constructor; calm(); P.pos.set(44, 0, 28); P.hp = 1e6;
       const [a, b2] = G.enemies; G.enemies.slice(2).forEach((e) => { e.dead = true; e.found = true; });
       [a, b2].forEach((e, i) => { e.release(); e.pos.set(30 + i * 2, 0, -15); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.sync(); e.ch.refresh(); });
+      // Tactical guards deliberately freeze on 5 % of grenade warnings. This check is about the scatter itself, so that
+      // one roll is pinned (both guards freezing at once failed CI run 10).
+      [a, b2].forEach((e) => { const ev = e.evade.bind(e); e.evade = (x, z) => { const r = Math.random; Math.random = () => 0; try { return ev(x, z); } finally { Math.random = r; } }; });
       G.spawnGrenade('frag', new V(31, 1.2, -14.5), new V(0, 0, 0), 'player'); let moved = 0; sim(2.6, () => { if (a.state === 'MOVE' || b2.state === 'MOVE') moved++; });
       o.evadeFrames = moved; sim(1); o.dist = [a, b2].map((e) => +Math.hypot(e.pos.x - 31, e.pos.z + 14.5).toFixed(1)); o.alive = [a, b2].filter((e) => !e.dead).length;
       // a guard in cover with a stale contact does not stay tucked forever
