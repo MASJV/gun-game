@@ -182,7 +182,24 @@ G.reinforce = () => { // a finite response team walks in from the map edge farth
 function disposeScene() {
   if (!G.world) return;
   for (const m of G.world.meshes || []) { if (m.userData.shared) m.dispose(); else { m.geometry.dispose(); m.material.dispose(); } }
-  G.audio.stopAmbient(); G.world = null; G.scene = null;
+  // Free every GPU resource the mission's scenes still reference: characters, view models, objective props,
+  // effects, per-mission canvas textures, shadow maps, bone textures. Without this each mission left ~30 geometries
+  // and ~11 textures behind. Shared template data is safe to free: three.js uploads it again on next use. The
+  // environment map is a render target shared with the menu, so it stays.
+  for (const root of [G.scene, G.wscene]) if (root) releaseGPU(root);
+  G.audio.stopAmbient(); G.world = null; G.scene = null; G.wscene = null;
+}
+function releaseGPU(root) {
+  const geos = new Set(), mats = new Set(), texs = new Set();
+  root.traverse((o) => {
+    if (o.geometry) geos.add(o.geometry);
+    if (o.material) for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.add(m);
+    if (o.isLight && o.shadow && o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; }
+    if (o.isSkinnedMesh && o.skeleton && o.skeleton.boneTexture) { o.skeleton.boneTexture.dispose(); o.skeleton.boneTexture = null; }
+  });
+  for (const m of mats) { for (const k of Object.keys(m)) { const v = m[k]; if (v && v.isTexture && v !== ENV && !v.isRenderTargetTexture) texs.add(v); } m.dispose(); }
+  for (const g of geos) g.dispose();
+  for (const t of texs) t.dispose();
 }
 function interactable(kind, x, y, z) {
   const g = new THREE.Group();

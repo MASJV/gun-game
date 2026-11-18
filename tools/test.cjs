@@ -895,6 +895,23 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     check('robustness: WebGL context loss shows a message, restoring the context clears it and frames continue', lost && lost[0][0] === true && lost[0][1] === 'block' && /DEVICE LOST/.test(lost[0][2]) && lost[1][0] === false && lost[1][1] === 'none' && fr2 > fr, [lost, fr2 - fr]);
   });
 
+  await run('resources', async () => {
+    // v2.4.1: returning to the menu used to leave ~30 geometries and ~11 textures per mission on the GPU
+    await start('warehouse', 'tactical'); await p.evaluate(() => { document.getElementById('pmenu').click(); });
+    const r = await p.evaluate(async () => {
+      const G = window.__SP, frame = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res))), out = [];
+      await frame(); const base = { ...G.renderer.info.memory };
+      for (let i = 0; i < 4; i++) {
+        Object.assign(G.sel, { map: i % 2 ? 'warehouse' : 'forest', mission: i % 2 ? 'rescue' : 'capture', length: 'standard', layout: null, mode: 'mission', seed: 40 + i });
+        document.getElementById('start').click(); for (let k = 0; k < 20; k++) G.step(1 / 60); await frame(); const inMission = { ...G.renderer.info.memory };
+        if (G.state === 'playing') G.state = 'paused'; document.getElementById('pmenu').click(); await frame(); out.push([inMission, { ...G.renderer.info.memory }]);
+      }
+      return { base, out };
+    });
+    const menu = r.out.map((x) => x[1]), mis = r.out.map((x) => x[0]);
+    check('resources: GPU geometries and textures are released when a mission ends (no growth over repeated missions)', menu.every((m) => m.geometries <= r.base.geometries + 2 && m.textures <= r.base.textures + 2) && mis[2].geometries <= mis[0].geometries + 5 && mis[3].geometries <= mis[1].geometries + 5 && mis[2].textures <= mis[0].textures + 3, r);
+  });
+
   await run('stability', async () => {
     const mem = [];
     for (let i = 0; i < 4; i++) { await start(i % 2 ? 'forest' : 'warehouse', 'elite'); mem.push(await p.evaluate(() => { const G = window.__SP; sim(3); let ms = 0; const t0 = performance.now(); for (let k = 0; k < 300; k++) G.step(1 / 60); ms = (performance.now() - t0) / 300; return { ms: +ms.toFixed(2), heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0 }; })); }
