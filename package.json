@@ -1,6 +1,7 @@
 {
   "name": "shadow-protocol",
   "version": "2.4.1",
+  "license": "MIT",
   "private": true,
   "description": "SHADOW PROTOCOL - tactical browser FPS (Three.js): solo missions, tactical enemy AI and 2-4 player LAN co-op",
   "scripts": {

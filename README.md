@@ -192,5 +192,5 @@ Project notes: [`docs/MULTIPLAYER.md`](docs/MULTIPLAYER.md) is current. [`docs/C
   - Obtained from the mirror `github.com/series-ai/jam-ready-assets`
 - **Generated in code:** world textures, audio, the UI, soldier equipment, optics and first-person hands.
 - **Library:** [three.js](https://threejs.org) (MIT).
-- **License for the original code:** none has been chosen yet. Until the owner adds a `LICENSE` file, the code is
-  shared without an explicit license. The Quaternius assets remain CC0.
+- **License:** the game's code is released under the [MIT License](LICENSE). The Quaternius assets remain CC0, and
+  three.js keeps its own MIT license.

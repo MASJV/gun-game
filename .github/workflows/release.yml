@@ -26,7 +26,7 @@ jobs:
         run: |
           d="shadow-protocol-$GITHUB_REF_NAME"
           mkdir -p "$d/dist" "$d/server" "$d/docs/media"
-          cp index.html package.json README.md RELEASE_NOTES.md CLAUDE.md GAME_PLAN.md "$d/"
+          cp index.html LICENSE package.json README.md RELEASE_NOTES.md CLAUDE.md GAME_PLAN.md "$d/"
           cp dist/game.js dist/assets.js "$d/dist/"
           cp server/lan.cjs "$d/server/"
           cp docs/*.md "$d/docs/"

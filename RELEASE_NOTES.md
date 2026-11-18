@@ -36,6 +36,7 @@ A polish and fix release of the v2.4 LAN co-op, prepared for public sharing. No 
 - New README with real gameplay screenshots and an accurate account of how the game was made.
 - `docs/LAN_CHECKLIST.md` for testing on real devices.
 - Old progress reports are marked as historical.
+- The code is released under the MIT License (`LICENSE`).
 
 **The ZIP** contains the ready-to-run game: `index.html` and `dist/` for solo play, and `server/lan.cjs` with
 `package.json` for LAN hosting (`node server/lan.cjs`, Node 18+), plus the docs. It has no `node_modules`.
@@ -51,4 +52,3 @@ E2E_LINE
 - no host migration
 - keep the host's tab in the foreground
 - no joining a mission in progress
-- the original code has no license file yet
