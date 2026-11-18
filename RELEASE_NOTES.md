@@ -43,7 +43,7 @@ A polish and fix release of the v2.4 LAN co-op, prepared for public sharing. No 
 **Verification, all automated** (headless Chromium, software WebGL, one machine):
 
 E2E_LINE
-- `npm test` 121/121, `npm run servertest` 13/13, `npm run mptest` 30/30 and `npm run smoke` all passed.
+- `npm test` 122/122, `npm run servertest` 18/18, `npm run mptest` 31/31 and `npm run smoke` all passed.
 - Co-op was tested with 2–4 independent browser contexts on 127.0.0.1, not on separate devices or real Wi-Fi.
 
 **Known limitations:**

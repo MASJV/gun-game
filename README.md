@@ -96,9 +96,9 @@ Results for v2.4.1 (details in [`docs/MULTIPLAYER.md`](docs/MULTIPLAYER.md) and 
 | Check | Result |
 |---|---|
 | `npm run build` | The bundle matches the committed `dist/game.js` |
-| `npm test` (single-player suite) | 121 / 121 |
-| `npm run servertest` (LAN server protocol and safety) | 13 / 13 |
-| `npm run mptest` (co-op: real server, 2–4 browser contexts) | 30 / 30 |
+| `npm test` (single-player suite) | 122 / 122 |
+| `npm run servertest` (LAN server protocol and safety) | 18 / 18 |
+| `npm run mptest` (co-op: real server, 2–4 browser contexts) | 31 / 31 |
 | `npm run smoke` (real menu flow, all mission types and the range) | passed, no page errors |
 | `npm run e2e` (real page, rendered-pixel checks, every map × mission × length played on foot) | E2E_RESULT |
 | GitHub Actions CI on a clean runner | build check, servertest, test, mptest, smoke and an e2e sample all passed |

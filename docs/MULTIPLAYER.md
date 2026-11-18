@@ -147,11 +147,11 @@ Static files are limited to a whitelist, so `src/`, `server/` and path traversal
 
 | Command | What it does |
 |---|---|
-| `npm run servertest` | 13 protocol and safety checks against a real server process with raw WebSocket clients. Needs Node 22+ for the built-in WebSocket client. |
-| `npm run mptest` | 30 checks with a real server and 2, 3, then 4, independent Chromium contexts. Each has its own storage and its own WebSocket connection, and uses the real menu and lobby. See below. |
-| `npm test` | The single-player suite (121 checks), unchanged |
+| `npm run servertest` | 18 protocol, safety and LAN-address-discovery checks against a real server process with raw WebSocket clients. Needs Node 22+ for the built-in WebSocket client. |
+| `npm run mptest` | 31 checks with a real server and 2, 3, then 4, independent Chromium contexts. Each has its own storage and its own WebSocket connection, and uses the real menu and lobby. See below. |
+| `npm test` | The single-player suite (122 checks, including the GPU-memory regression check) |
 
-The 30 `mptest` checks cover:
+The 31 `mptest` checks cover:
 
 - **Lobby:** create, wrong code, invitation link, leader-only settings, loadouts, ready
 - **Mission start and presence:** identical mission and guard roster, each player seeing the other, movement and
@@ -171,6 +171,8 @@ The 30 `mptest` checks cover:
   - **E.** "Copy link" reports the truth. This is checked on localhost, on a plain-HTTP LAN-style origin
     (`lan.test` mapped to 127.0.0.1, which is not a secure context and has no Clipboard API), and when copying
     fails.
+  - **LAN invitation.** A party created on `localhost` shows the host's network address (a simulated adapter)
+    in its invitation link, and a guest joins through that link.
 
 **What was not tested:**
 
