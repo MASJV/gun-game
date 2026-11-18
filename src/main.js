@@ -96,9 +96,10 @@ G.playerBox = () => {
   b.x0 = p.x + ox - 0.3; b.x1 = p.x + ox + 0.3; b.z0 = p.z + oz - 0.3; b.z1 = p.z + oz + 0.3; b.y0 = p.y; b.y1 = p.y + P.height;
   return G.pbox;
 };
-const panTo = (x, z) => { const P = G.player, dx = x - P.pos.x, dz = z - P.pos.z, d = Math.hypot(dx, dz) || 1; return (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / d; };
-G.enemyShotSound = (e) => G.audio.enemyShot(e.pd, panTo(e.pos.x, e.pos.z));
-G.enemyStep = (e) => G.audio.noise(0.08, { f: 420, f2: 140, vol: (e.moved > 3 ? 0.22 : 0.1) * (1 - e.pd / 16), pan: panTo(e.pos.x, e.pos.z) });
+const panTo = (x, z) => { const P = G.localPlayer || G.player, dx = x - P.pos.x, dz = z - P.pos.z, d = Math.hypot(dx, dz) || 1; return (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / d; };
+const earDist = (e) => { const P = G.localPlayer || G.player; return Math.hypot(e.pos.x - P.pos.x, e.pos.z - P.pos.z); };
+G.enemyShotSound = (e) => G.audio.enemyShot(G.localPlayer ? earDist(e) : e.pd, panTo(e.pos.x, e.pos.z));
+G.enemyStep = (e) => { const d = G.localPlayer ? earDist(e) : e.pd; if (d < 16) G.audio.noise(0.08, { f: 420, f2: 140, vol: (e.moved > 3 ? 0.22 : 0.1) * (1 - d / 16), pan: panTo(e.pos.x, e.pos.z) }); };
 G.nearMiss = (ox, oy, oz, dx, dy, dz) => {
   const c = G.camera.position, t = (c.x - ox) * dx + (c.y - oy) * dy + (c.z - oz) * dz;
   if (t > 0 && Math.hypot(ox + dx * t - c.x, oy + dy * t - c.y, oz + dz * t - c.z) < 1.4) G.audio.whiz(panTo(ox, oz));
@@ -374,9 +375,15 @@ G.animEvery = (pos) => {
   return d < 45 ? 1 : d < 75 ? 2 : 3;
 };
 function show(id) { for (const k of ['menu', 'pause', 'end', 'load', 'briefov']) $(k).classList.toggle('on', k === id); }
-function pause() { if (G.state !== 'playing') return; G.state = 'paused'; $('phint').textContent = G.mp ? 'CO-OP MISSION — THE GAME KEEPS RUNNING' : 'MISSION ON HOLD'; show('pause'); G.inp.k = {}; G.inp.lmb = G.inp.rmb = false; }
+function pause() { if (G.state !== 'playing') return; G.state = 'paused'; $('phint').textContent = G.mp ? 'CO-OP MISSION — THE GAME KEEPS RUNNING' : 'MISSION ON HOLD';
+  $('prestart').style.display = G.mp ? 'none' : ''; $('pmenu').textContent = !G.mp ? 'RETURN TO MENU' : G.mp.host ? 'END MISSION FOR EVERYONE' : 'LEAVE MISSION (LEAVES THE PARTY)'; show('pause'); G.inp.k = {}; G.inp.lmb = G.inp.rmb = false; }
 function resume() { if (G.state !== 'paused') return; if (TEST) { G.state = 'playing'; show(null); } else lock(); }
 function toMenu() {
+  if (G.mp && G.mp.phase !== 'over' && G.mpLobby && G.mpLobby.inParty()) { // leaving a co-op mission in progress
+    const wasHost = G.mp.host; G.mp.phase = 'over'; // (abort() is a no-op from here: no re-entry)
+    G.mpLobby.leave(true); // client: the server removes us, teammates carry on · host: the server closes the party for everyone
+    G.mpLobby.msg(wasHost ? 'You ended the mission and closed the party' : 'You left the mission and the party', false);
+  }
   if (G.mp) { G.mp.dispose(); G.mp = null; $('mphud').style.display = 'none'; if (G.mpLobby && G.mpLobby.inParty()) M.tab = 'mp'; }
   G.state = 'menu'; disposeScene(); $('hud').classList.remove('on'); setNV(false); $('scope').style.display = 'none'; $('flashov').style.opacity = 0;
   show('menu'); if (document.pointerLockElement) document.exitPointerLock(); menuRefresh();
@@ -519,7 +526,7 @@ function updateMission(dt) {
   if (G.mp) {
     if (G.mp.host) { const r = G.mp.checkEnd(); if (r) return G.mp.finish(r.win, r.reason); }
     if (G.mp.revivePrompt) prompt = G.mp.revivePrompt;
-    if (Mi.complete && near(ex[0], ex[2], 4.5) && !out) { const [a, b] = G.mp.extract; prompt = prompt || (Mi.civNear() ? `EXTRACTION — ${a} / ${b} OPERATORS IN POSITION` : `Wait for the ${Mi.civ.kind === 'hvt' ? 'target' : 'hostage'} to reach you`); }
+    if (Mi.complete && near(ex[0], ex[2], 4.5) && !out) { const [a, b, dn, who] = G.mp.extract; prompt = prompt || (dn ? `REVIVE ${esc(String(who).toUpperCase())} BEFORE EXTRACTION` : Mi.civNear() ? `EXTRACTION — ${a} / ${b} OPERATORS IN POSITION` : `Wait for the ${Mi.civ.kind === 'hvt' ? 'target' : 'hostage'} to reach you`); }
     if (out) prompt = P.kia ? '' : `YOU ARE DOWN — ${Math.ceil(G.mp.local.bleed)} s · A TEAMMATE CAN REVIVE YOU`;
   } else {
     if (Mi.failed) return endMission(false, Mi.failed);
