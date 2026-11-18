@@ -1,4 +1,4 @@
-# SHADOW PROTOCOL — LAN co-op (v2.4)
+# SHADOW PROTOCOL — LAN co-op (v2.4.1)
 
 Co-op for 2–4 players on the same local network. There are no accounts, no cloud services and no internet
 dependency. Single-player is unchanged and never needs the server.
@@ -51,8 +51,10 @@ dependency. Single-player is unchanged and never needs the server.
 | Failure | Any normal mission failure (for example the hostage killed), or no operator left standing. |
 | Friendly fire | Off by default. When enabled in the lobby, rounds that hit a teammate do 60 % damage. |
 | Disconnects | A dropped client gets 20 s to reconnect automatically and keeps their character. Guards ignore a missing operator. |
+| Leaving a mission | Esc → **LEAVE MISSION** (a client) leaves the party: the others carry on, and guards stop targeting the leaver. Esc → **END MISSION FOR EVERYONE** (the host) closes the party and tells everyone. Returning to the lobby after the results screen keeps the party together. |
 | Host leaves | The party ends for everyone with a message. There is no host migration. |
-| Pause | Esc releases the mouse and shows the pause menu, but a co-op mission keeps running. |
+| Pause | Esc releases the mouse and shows the pause menu, but a co-op mission keeps running. Restart is not offered in co-op. |
+| Online demo | An HTTPS copy of the game (such as a GitHub Pages solo demo) cannot connect to a LAN host, because browsers block `ws://` from `https://` pages. The MULTIPLAYER tab says so. For co-op, open the host's own `http://` address. |
 | After a mission | Everyone sees the same team results (status, kills, accuracy, revives) and returns to the lobby for the next mission. |
 
 ## Architecture
@@ -145,11 +147,11 @@ Static files are limited to a whitelist, so `src/`, `server/` and path traversal
 
 | Command | What it does |
 |---|---|
-| `npm run servertest` | 13 protocol and safety checks against a real server process with raw WebSocket clients |
-| `npm run mptest` | 24 checks with a real server and 2, then 4, independent Chromium contexts. Each has its own storage and its own WebSocket connection, and uses the real menu and lobby. See below. |
+| `npm run servertest` | 13 protocol and safety checks against a real server process with raw WebSocket clients. Needs Node 22+ for the built-in WebSocket client. |
+| `npm run mptest` | 30 checks with a real server and 2, 3, then 4, independent Chromium contexts. Each has its own storage and its own WebSocket connection, and uses the real menu and lobby. See below. |
 | `npm test` | The single-player suite (121 checks), unchanged |
 
-The 24 `mptest` checks cover:
+The 30 `mptest` checks cover:
 
 - **Lobby:** create, wrong code, invitation link, leader-only settings, loadouts, ready
 - **Mission start and presence:** identical mission and guard roster, each player seeing the other, movement and
@@ -159,15 +161,43 @@ The 24 `mptest` checks cover:
 - **Mission flow:** shared objective, extraction rule, identical results, return to lobby and a second mission
 - **Failure and connection handling:** client disconnect, team wipe, a fifth player refused, four-player mission with
   bleed-out, KIA and spectate, bandwidth, host leaving, server restart
+- **v2.4.1 regressions**, each reproduced against v2.4.0 before it was fixed:
+  - **A.** A guard's round on a client must down that client, not the host. Team hit tests list each operator
+    once, and `G.player` is restored even when a guard update throws.
+  - **B.** A client leaving a live mission through the pause menu is removed while the others carry on. The host
+    leaving through the pause menu closes the party for everyone.
+  - **C.** A connected, downed teammate blocks extraction; a KIA one does not.
+  - **D.** The host's wrapped callbacks are restored after every session, including a later solo mission.
+  - **E.** "Copy link" reports the truth. This is checked on localhost, on a plain-HTTP LAN-style origin
+    (`lan.test` mapped to 127.0.0.1, which is not a secure context and has no Clipboard API), and when copying
+    fails.
 
 **What was not tested:**
 
 - Everything ran on **one machine**: several browser contexts on 127.0.0.1, not separate physical devices on a real
   network. Wi-Fi latency, packet loss and firewalls were not exercised.
 - `mptest` skips 3D rendering in its tabs for speed (`G.skipRender`, test mode only). Rendering of teammates was
-  checked separately in screenshots, and the single-player e2e suite checks rendered pixels.
+  checked separately in screenshots (`docs/media/gameplay-coop.png`), and the single-player e2e suite checks
+  rendered pixels.
+- Tests place operators and guards directly (`G.mp.trustMoves` on the host) to stage specific situations. Movement
+  validation itself is tested separately.
+- For real devices, use [`docs/LAN_CHECKLIST.md`](LAN_CHECKLIST.md).
 
-## Bugs found and fixed while building this
+## Fixed in v2.4.1
+
+- **A.** During guard updates the host's "local operator" was really the guard's current target. A guard's round on
+  a client then downed the *host* (event, bleed timer and damage feedback), and team hit tests listed the client
+  twice. The session now keeps a stable reference to its own operator.
+- **B.** Returning to the menu during a live co-op mission disposed the session without telling anyone. The player
+  stayed "in" the party and the lobby could stay stuck in "mission in progress". Leaving is now explicit, as
+  described in the rules above.
+- **C.** Extraction ignored teammates who were downed elsewhere, contrary to the documented rule. It is enforced now.
+- **D.** The host's wrapped callbacks (toast, radio, security, kills, spawns) were never restored. Later sessions,
+  and solo play, kept feeding events into disposed sessions. They are now restored on dispose.
+- **E.** "Copy link" announced success before the clipboard write had finished, and announced it even when the
+  write failed.
+
+## Bugs found and fixed while building v2.4
 
 - **Resume after a server restart:** the new server correctly answered "party gone", but the client stayed in a dead
   lobby. It now ends the party and returns to the connect screen.
@@ -194,7 +224,7 @@ The 24 `mptest` checks cover:
 
 1. `npm run lan` and open `http://localhost:8787/` in two browser windows. Use a second browser profile or a private
    window so each window has its own storage.
-2. Run `npm run servertest`, `npm run mptest` and `npm test` before pushing.
+2. Run `npm run servertest`, `npm run mptest` and `npm test` before pushing. CI runs these on every pull request (`.github/workflows/ci.yml`).
 3. Natural next steps:
    - host migration
    - joining a mission in progress, with a snapshot of the full world state
