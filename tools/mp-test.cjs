@@ -21,13 +21,16 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
 
 (async () => {
   await startServer();
-  const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  // lan.test = this server under a non-localhost name: a plain-HTTP page that is NOT a secure context, like a real LAN host.
+  // direct://: no system proxy may intercept that name.
+  const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--proxy-server=direct://', '--host-resolver-rules=MAP lan.test 127.0.0.1'] });
   const errs = (global.__errs = []);
-  const client = async (name) => {
+  const client = async (name, url = URL) => {
     const ctx = await b.newContext({ viewport: { width: 480, height: 270 } }); // own storage, own connection
     await ctx.addInitScript(() => { try { localStorage.setItem('sp2_settings', JSON.stringify({ quality: 'low', adaptive: false })); } catch (e) { /* ignore */ } });
     const p = await ctx.newPage(); p.on('pageerror', (e) => errs.push(name + ': ' + e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' | ')));
-    await p.goto(URL); await p.waitForFunction('window.__SP && window.__SP.state === "menu"', null, { timeout: 120000 });
+    await p.goto(url); await p.waitForFunction('window.__SP && window.__SP.state === "menu"', null, { timeout: 120000 });
+    await p.evaluate(() => { window.__orig = { toast: window.__SP.toast, say: window.__SP.say, onSecurity: window.__SP.onSecurity, onKill: window.__SP.onKill }; });
     await p.evaluate(() => {
       const G = window.__SP;
       G.skipRender = true; // software GL in several tabs would crawl; rendering itself is covered by tools/e2e.cjs
@@ -130,7 +133,9 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   await placeB(); await wait(300);
   await A.evaluate(() => { const G = window.__SP, rp = [...G.mp.players.values()][0]; rp.damage(500, rp.pos, { name: 'test' }); });
   await B.waitForFunction(() => window.__SP.player.downed === true, null, { timeout: 10000 }).catch(() => {});
-  const down = await B.evaluate(() => [window.__SP.player.downed, document.getElementById('prompt').textContent]);
+  // the flag arrives with the host's message; the banner is drawn on the next HUD frame (CI run 12 read it in between)
+  await B.waitForFunction(() => /DOWN/.test(document.getElementById('prompt').textContent), null, { timeout: 5000 }).catch(() => {});
+  const down =await B.evaluate(() => [window.__SP.player.downed, document.getElementById('prompt').textContent]);
   const rev = await A.evaluate(async () => {
     const G = window.__SP, rp = [...G.mp.players.values()][0], P = G.player; P.pos.set(rp.pos.x + 0.8, rp.pos.y, rp.pos.z); P.vel.set(0, 0, 0);
     await new Promise((r) => setTimeout(r, 300)); const prompt = document.getElementById('prompt').textContent;
@@ -147,6 +152,24 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
     return i;
   });
   await wait(500);
+  // The frag stops against cover about 7 m from where it was aimed, near the 8 m edge of the blast, so a small drift
+  // of the guard left him undamaged (CI run 8). Once the host's frag is resting, the host puts the guard 1.5 m from it
+  // with a clear line, so the blast damage this check is about is well inside the radius.
+  const placed = A.evaluate(async (i) => {
+    const G = window.__SP, e = G.enemies[i], t0 = performance.now();
+    while (performance.now() - t0 < 6000) {
+      const n = G.gren.list.find((g) => g.type === 'frag' && g.fuse < 1.2);
+      if (n) {
+        for (let k = 0; k < 8; k++) {
+          const a = k * Math.PI / 4, x = n.pos.x + 1.5 * Math.cos(a), z = n.pos.z + 1.5 * Math.sin(a);
+          if (G.losB(n.pos.x, n.pos.y + 0.1, n.pos.z, x, 1, z)) { e.pos.set(x, 0, z); e.sync(); e.ch.refresh(); return [+x.toFixed(2), +z.toFixed(2)]; }
+        }
+        return 'no clear spot';
+      }
+      await new Promise((r) => setTimeout(r, 16));
+    }
+    return 'no frag on the host';
+  }, nadeTarget);
   const nade = await B.evaluate(async (i) => {
     const G = window.__SP, P = G.player, e = G.enemies[i]; P.pitch = 0.02; P.yaw = Math.atan2(-(e.pos.x - P.pos.x), -(e.pos.z - P.pos.z));
     const inv0 = P.inv.frag; while (P.throwSel !== 'frag') P.cycleThrow(); P.startUse('throw');
@@ -155,8 +178,9 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
     await until(() => G.mp.lastBoom, 6000); return { inv: inv0 - P.inv.frag, seen, boom: G.mp.lastBoom, dead: e.dead, left: G.gren.list.length };
   }, nadeTarget);
   console.log('host-fatal', await A.evaluate(() => document.getElementById('fatal').textContent), JSON.stringify(errs.slice(0, 3)));
+  const guardAt = await placed;
   const nadeHost = await A.evaluate((i) => ({ dead: window.__SP.enemies[i].dead, hp: Math.round(window.__SP.enemies[i].hp), boom: window.__SP.mp.lastBoom, left: window.__SP.gren.list.length }), nadeTarget);
-  check('grenade: the client throws a frag — the host simulates it, it explodes at the same spot on both screens, the guard takes blast damage (same alive/dead state everywhere), no copies left', nade.inv === 1 && nade.seen >= 1 && nade.left === 0 && nadeHost.left === 0 && nadeHost.hp < 100 && nade.dead === nadeHost.dead && nade.boom && nadeHost.boom && Math.hypot(nade.boom[0] - nadeHost.boom[0], nade.boom[2] - nadeHost.boom[2]) < 0.05, { client: nade, host: nadeHost });
+  check('grenade: the client throws a frag — the host simulates it, it explodes at the same spot on both screens, the guard takes blast damage (same alive/dead state everywhere), no copies left', nade.inv === 1 && nade.seen >= 1 && nade.left === 0 && nadeHost.left === 0 && nadeHost.hp < 100 && nade.dead === nadeHost.dead && nade.boom && nadeHost.boom && Math.hypot(nade.boom[0] - nadeHost.boom[0], nade.boom[2] - nadeHost.boom[2]) < 0.05, { client: nade, host: nadeHost, guardAt });
 
   // --------------------------------------------------------------- shared objectives, extraction, synchronized results
   await A.evaluate(() => { window.__SP.enemies.forEach((e) => { if (!e.dead) { e.percT = 1e9; e.los = false; e.detect = 0; e.waitT = 1e9; } }); }); // keep the guards out of the paperwork
@@ -258,6 +282,104 @@ const stopServer = () => new Promise((r) => { if (!server) return r(); server.re
   await Promise.all(C.map((c) => c.waitForFunction(() => window.__SP.state === 'menu' && /ended|left|disconnected/i.test(document.getElementById('mperr').textContent), null, { timeout: 15000 }).catch(() => {})));
   const ended = await Promise.all(C.map((c) => c.evaluate(() => [window.__SP.state, document.getElementById('mperr').textContent, document.getElementById('mpconn').style.display])));
   check('host leaves: every client is told the party has ended and is back at the connect screen', ended.every((e) => e[0] === 'menu' && /ended|left|disconnected/i.test(e[1]) && e[2] === 'block'), ended);
+
+  // --------------------------------------------------------------- v2.4.1 regressions (each reproduced against v2.4.0 first)
+  const X = await client('X'), Y = await client('Y', `http://lan.test:${PORT}/?test`), Z = await client('Z');
+  await X.click('[data-tab="mp"]'); await X.fill('#mpname', 'Xray'); await X.fill('#mpaddr', `127.0.0.1:${PORT}`); await X.click('#mpcreate');
+  await X.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.getElementById('mpcodev').textContent), null, { timeout: 15000 });
+  const codeR = await X.evaluate(() => document.getElementById('mpcodev').textContent);
+  await Y.click('[data-tab="mp"]'); await Y.fill('#mpname', 'Yankee'); await Y.fill('#mpaddr', `lan.test:${PORT}`); await Y.fill('#mpcode', codeR); await Y.click('#mpjoin');
+  await Z.click('[data-tab="mp"]'); await Z.fill('#mpname', 'Zulu'); await Z.fill('#mpaddr', `127.0.0.1:${PORT}`); await Z.fill('#mpcode', codeR); await Z.click('#mpjoin');
+  await X.waitForFunction(() => document.querySelectorAll('#mpplayers .mpp').length === 3, null, { timeout: 15000 });
+  // E. invitation link: copy reports the truth (localhost secure context, plain-HTTP LAN origin, and a copy that fails)
+  const copyOn = async (p, breakIt) => { await p.evaluate((breakIt) => { window.__copied = null; document.addEventListener('copy', () => { window.__copied = document.activeElement && document.activeElement.value; }, { once: true }); if (breakIt) { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); document.execCommand = () => false; } }, breakIt); await p.evaluate(() => { document.getElementById('content').scrollTop = 0; }); await p.click('#mpcopy'); await wait(400); return p.evaluate(() => ({ secure: window.isSecureContext, msg: document.getElementById('mpmsg').textContent, copied: window.__copied, link: document.getElementById('mplink').value })); };
+  const cx = await copyOn(X, false), cy = await copyOn(Y, false), cz = await copyOn(Z, true);
+  check('E. copy invitation link: success only when the link really was copied — localhost, a plain-HTTP LAN origin (no clipboard API), and an honest failure message', cx.secure && /copied/.test(cx.msg) && cx.copied === cx.link && !cy.secure && /copied/.test(cy.msg) && cy.copied === cy.link && /Could not copy/.test(cz.msg), { cx, cy, cz: cz.msg });
+  await Y.click('#mpready'); await Z.click('#mpready');
+  await X.selectOption('#mps_map', 'warehouse'); await X.selectOption('#mps_mission', 'intel'); await X.selectOption('#mps_length', 'quick');
+  await Y.click('#mpready'); await Z.click('#mpready'); // settings changes reset readiness
+  await X.waitForFunction(() => !document.getElementById('mpstart').disabled, null, { timeout: 15000 }); await X.click('#mpstart');
+  await Promise.all([X, Y, Z].map((p) => p.waitForFunction(() => window.__SP.state === 'playing' && window.__SP.mp && window.__SP.mp.phase === 'live', null, { timeout: 120000 })));
+  await X.evaluate(() => { const G = window.__SP; G.mp.trustMoves = true; G.enemies.forEach((e) => { e.percT = 1e9; e.los = false; e.detect = 0; e.waitT = 1e9; }); });
+  await Y.evaluate(() => { const P = window.__SP.player; P.pos.set(40, 0, 12); P.vel.set(0, 0, 0); P.yaw = 0; }); await wait(500);
+  // A. a guard's lethal round on a CLIENT, inside the same G.player context that hostAI uses
+  const ra = await X.evaluate(() => {
+    const G = window.__SP, S = G.mp, P0 = S.me(), rp = [...S.players.values()].find((r) => r.name === 'Yankee'), e = G.enemies.find((x) => !x.dead);
+    e.release(); e.set('PATROL'); e.pos.set(40, 0, 6); e.yaw = Math.atan2(-(rp.pos.x - e.pos.x), -(rp.pos.z - e.pos.z)); e.path = null; e.sync(); e.ch.refresh();
+    const sent = []; const net = G.mpLobby.net, send0 = net.send.bind(net); net.send = (o) => { if (o.t === 'to') sent.push(o.k + ':' + o.id); if (o.t === 'ev') sent.push(...o.l.filter((x) => x.k === 'down').map((x) => 'down:' + x.id)); return send0(o); };
+    const hurt0 = G.onHurt; let hostFeedback = 0; G.onHurt = (...a) => { hostFeedback++; return hurt0(...a); };
+    rp.hp = 10; const hp0 = P0.hp; let during = null;
+    for (let k = 0; k < 40 && !rp.downed; k++) { G.player = rp; during = S.standing().map((p) => (p === P0 ? 'host' : p.name)); e.seeBody = true; e.pd = 6; e.ammo = 30; e.fire(false); G.player = P0; }
+    S.flush(); net.send = send0; G.onHurt = hurt0;
+    // hostAI restores G.player even when a guard's update throws
+    const g = G.enemies.find((x) => !x.dead && x !== e), up = g.update; g.update = () => { throw new Error('test'); }; let threw = false;
+    try { S.hostAI(1 / 60); } catch (err) { threw = true; } g.update = up;
+    return { during, client: { downed: rp.downed, bleed: rp.bleed, hp: rp.hp }, host: { downed: !!P0.downed, bleed: S.local.bleed, hpChange: P0.hp - hp0, feedback: hostFeedback }, sent, restored: threw && G.player === P0, ids: [S.id, rp.id] };
+  });
+  await Y.waitForFunction(() => window.__SP.player.downed === true, null, { timeout: 8000 }).catch(() => {});
+  const yDown = await Y.evaluate(() => [window.__SP.player.downed, Math.round(window.__SP.mp.local.bleed)]);
+  check('A. guard damage reaches the right operator: host listed once in team hit tests, the client (not the host) is downed with the bleed-out timer, no host damage feedback, hurt + down sent for the client, G.player restored after errors',
+    JSON.stringify(ra.during) === JSON.stringify(['host', 'Yankee', 'Zulu']) && ra.client.downed && ra.client.bleed > 40 && !ra.host.downed && ra.host.bleed === 0 && ra.host.hpChange === 0 && ra.host.feedback === 0 && ra.sent.includes('hurt:' + ra.ids[1]) && ra.sent.includes('down:' + ra.ids[1]) && !ra.sent.includes('down:' + ra.ids[0]) && ra.restored && yDown[0] && yDown[1] > 30, { ra, yDown });
+  // C. a connected downed teammate blocks extraction; once KIA he no longer does
+  await X.evaluate(async () => { const G = window.__SP, P = G.player, Mi = G.mission, s = Mi.stage, it = Mi.items.find((x) => x.stage === Mi.i && !x.taken), a = s.anchors[it.k].stand; P.pos.set(a[0], G.world.nav.height(a[0], a[1]), a[1]); P.vel.set(0, 0, 0); await new Promise((r) => setTimeout(r, 300)); key('KeyE', true); window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' })); await until(() => Mi.complete, 8000); key('KeyE', false); });
+  const exR = await X.evaluate(() => window.__SP.mission.def.exit.pos);
+  for (const [k, p] of [X, Z].entries()) await p.evaluate(([ex, k]) => { const P = window.__SP.player; P.pos.set(ex[0] + k * 1.2, 0, ex[2]); P.vel.set(0, 0, 0); }, [exR, k]);
+  await wait(1500);
+  const blocked = await X.evaluate(() => [window.__SP.state, window.__SP.mission.complete, document.getElementById('prompt').textContent]);
+  await X.evaluate(() => { const rp = [...window.__SP.mp.players.values()].find((r) => r.name === 'Yankee'); rp.bleed = 0.2; });
+  await Promise.all([X, Y, Z].map((p) => p.waitForFunction(() => window.__SP.state === 'won', null, { timeout: 10000 }).catch(() => {})));
+  const afterKia = await Promise.all([X, Y, Z].map((p) => p.evaluate(() => [window.__SP.state, window.__SP.coopResult && window.__SP.coopResult.players.map((x) => x.status).join(',')])));
+  check('C. extraction waits while a connected teammate is downed elsewhere (and says who to revive); after he is KIA the others extract', blocked[0] === 'playing' && blocked[1] && /REVIVE YANKEE/.test(blocked[2]) && afterKia.every((r) => r[0] === 'won' && /KIA/.test(r[1])), { blocked, afterKia });
+  // D. back in the lobby the host's shared callbacks are the originals again (no wrappers left behind)
+  await Promise.all([X, Y, Z].map((p) => p.evaluate(() => { document.getElementById('content').scrollTop = 0; document.getElementById('emenu').click(); })));
+  const unwrapped1 = await X.evaluate(() => { const G = window.__SP, o = window.__orig; return [G.toast === o.toast, G.say === o.say, G.onSecurity === o.onSecurity, G.onKill === o.onKill, G.mp === null, G.localPlayer == null]; });
+  // second mission; B. then a client and then the host leave it through the pause menu
+  for (const p of [Y, Z]) await p.waitForFunction(() => !document.getElementById('mpready').disabled, null, { timeout: 15000 }).then(() => p.click('#mpready'));
+  await X.waitForFunction(() => !document.getElementById('mpstart').disabled, null, { timeout: 15000 }); await X.click('#mpstart');
+  await Promise.all([X, Y, Z].map((p) => p.waitForFunction(() => window.__SP.state === 'playing' && window.__SP.mp && window.__SP.mp.phase === 'live', null, { timeout: 120000 })));
+  const zLabel = await Z.evaluate(() => { const G = window.__SP; window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })); const l = [G.state, document.getElementById('pmenu').textContent, getComputedStyle(document.getElementById('prestart')).display]; document.getElementById('pmenu').click(); return l; });
+  await wait(1200);
+  const leftC = await Promise.all([X.evaluate(() => { const r = [...window.__SP.mp.players.values()].find((x) => x.name === 'Zulu'); return { state: window.__SP.state, zConnected: r.connected, targets: window.__SP.mp.standing().length, lobby: window.__SP.mpLobby.lobby.players.length }; }),
+    Y.evaluate(() => ({ state: window.__SP.state, team: document.getElementById('mphud').textContent })),
+    Z.evaluate(() => ({ state: window.__SP.state, inParty: window.__SP.mpLobby.inParty(), msg: document.getElementById('mperr').textContent, connect: document.getElementById('mpconn').style.display }))]);
+  check('B. a client leaving an active mission is removed from the party; host and the other client carry on without him; he is back at the connect screen, not in a stuck lobby',
+    zLabel[0] === 'paused' && /LEAVE MISSION/.test(zLabel[1]) && zLabel[2] === 'none' && leftC[0].state === 'playing' && !leftC[0].zConnected && leftC[0].targets === 2 && leftC[0].lobby === 2 && leftC[1].state === 'playing' && /Zulu\s*LEFT/i.test(leftC[1].team) && leftC[2].state === 'menu' && !leftC[2].inParty && /left the mission/i.test(leftC[2].msg) && leftC[2].connect === 'block', { zLabel, leftC });
+  const xLabel = await X.evaluate(() => { const G = window.__SP; window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })); const l = [G.state, document.getElementById('pmenu').textContent]; document.getElementById('pmenu').click(); return l; });
+  await Y.waitForFunction(() => window.__SP.state === 'menu' && /ended/i.test(document.getElementById('mperr').textContent), null, { timeout: 10000 }).catch(() => {});
+  const leftH = await Promise.all([X.evaluate(() => ({ state: window.__SP.state, inParty: window.__SP.mpLobby.inParty(), msg: document.getElementById('mperr').textContent })), Y.evaluate(() => ({ state: window.__SP.state, inParty: window.__SP.mpLobby.inParty(), msg: document.getElementById('mperr').textContent }))]);
+  check('B. the host leaving an active mission ends it cleanly: the remaining client is told the party ended and nobody is left in a "mission in progress" lobby', xLabel[0] === 'paused' && /END MISSION FOR EVERYONE/.test(xLabel[1]) && leftH.every((r) => r.state === 'menu' && !r.inParty) && /ended/i.test(leftH[1].msg) && /ended the mission/i.test(leftH[0].msg), { xLabel, leftH });
+  // D. (continued) after co-op the same tab plays solo: originals in place, nothing reaches the old session
+  const solo = await X.evaluate(async () => {
+    const G = window.__SP, o = window.__orig; document.querySelector('[data-tab="play"]').click(); G.sel.mode = 'mission'; document.getElementById('start').click();
+    const t0 = performance.now(); while (G.state !== 'playing' && performance.now() - t0 < 5000) { if (G.state === 'brief') document.getElementById('brgo').click(); await new Promise((r) => setTimeout(r, 50)); }
+    for (let i = 0; i < 30; i++) G.step(1 / 60); G.toast('solo', 1);
+    return { state: G.state, mp: G.mp, originals: [G.toast === o.toast, G.say === o.say, G.onSecurity === o.onSecurity, G.onKill === o.onKill] };
+  });
+  check('D. host callbacks are restored after every co-op session (lobby return and leaving), and a later solo mission runs with the originals and no session', unwrapped1.every(Boolean) && solo.state === 'playing' && solo.mp === null && solo.originals.every(Boolean), { unwrapped1, solo });
+  for (const p of [X, Y, Z]) await p.ctx.close().catch(() => {});
+
+  // --------------------------------------------------------------- invitation link from a localhost-created party (LAN adapter present)
+  // A second server sees one external adapter at 127.0.0.2 (SP_TEST_IFACES, test-only): like a real LAN address it
+  // reaches this machine, so the link it produces can actually be opened by another browser.
+  {
+    const P2 = PORT + 1, iface = JSON.stringify({ eth0: [{ address: '127.0.0.2', family: 'IPv4', internal: false }], lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true }] });
+    const s2 = spawn(process.execPath, [path.join(ROOT, 'server', 'lan.cjs'), '--port', String(P2)], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, SP_TEST_IFACES: iface } });
+    let banner = ''; s2.stdout.on('data', (d) => { banner += d; });
+    await new Promise((r) => { const t0 = Date.now(); const tick = () => (banner.includes('Ctrl+C') || Date.now() - t0 > 5000 ? r() : setTimeout(tick, 50)); tick(); });
+    const H2 = await client('Invite-host', `http://127.0.0.1:${P2}/?test`);
+    await H2.click('[data-tab="mp"]'); await H2.fill('#mpname', 'Host'); await H2.fill('#mpaddr', `127.0.0.1:${P2}`); await H2.click('#mpcreate');
+    await H2.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.getElementById('mpcodev').textContent), null, { timeout: 15000 });
+    const inv = await H2.evaluate(() => ({ link: document.getElementById('mplink').value, help: document.getElementById('mplan').textContent, code: document.getElementById('mpcodev').textContent }));
+    const G2 = await client('Invite-guest', inv.link.replace('?join=', '?test&join=')); // the guest opens exactly the invitation (plus test mode)
+    const pre = await G2.evaluate(() => ({ tab: document.getElementById('t-mp').classList.contains('on'), code: document.getElementById('mpcode').value, addr: document.getElementById('mpaddr').value }));
+    await G2.fill('#mpname', 'Guest'); await G2.click('#mpjoin');
+    await H2.waitForFunction(() => document.querySelectorAll('#mpplayers .mpp').length === 2, null, { timeout: 15000 }).catch(() => {});
+    const joined = await H2.evaluate(() => [...document.querySelectorAll('#mpplayers .n')].map((e) => e.textContent));
+    check('invitation: a party created on http://127.0.0.1 invites via the LAN address (banner and link), and a second browser opening that link joins with the code filled in',
+      new RegExp(`Your network:\\s+http://127\\.0\\.0\\.2:${P2}/`).test(banner) && inv.link === `http://127.0.0.2:${P2}/?join=${inv.code}` && inv.help.includes(`http://127.0.0.2:${P2}/`) && pre.tab && pre.code === inv.code && pre.addr === `127.0.0.2:${P2}` && joined.some((n) => n.includes('Guest')),
+      { link: inv.link, pre, joined, bannerHasLan: banner.includes('127.0.0.2') });
+    await H2.ctx.close(); await G2.ctx.close(); s2.kill();
+  }
 
   // --------------------------------------------------------------- server restart
   const R = C[0];

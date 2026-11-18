@@ -1,5 +1,8 @@
 # SHADOW PROTOCOL V2 — progress log
 
+> **Historical record — V2 development log (branch `v2-overhaul`).** Kept for reference; details (branch names, test counts, file names) describe the project at that time. Current state: [README](../README.md) and [MULTIPLAYER.md](MULTIPLAYER.md).
+
+
 Single source of truth for resuming V2 work. Read this first, then `git log --oneline`.
 
 ## Branches

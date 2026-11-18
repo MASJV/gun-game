@@ -1,5 +1,8 @@
 # SHADOW PROTOCOL — remaining implementation plan (V2.1 release)
 
+> **Historical record — V2.1 implementation plan (completed).** Kept for reference; details (branch names, test counts, file names) describe the project at that time. Current state: [README](README.md) and [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
+
+
 **Status: complete — T1–T4 implemented and all release gates passed (see `docs/V2_1_PROGRESS.md`).**
 
 Branch: `v2.1-expansion` (base for all tasks). Release target: merge into `main` once every gate in §4 passes.

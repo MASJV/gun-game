@@ -108,6 +108,9 @@ export function initLobby(G, H) {
   try { nameEl.value = localStorage.getItem('sp_mpname') || ''; addrEl.value = localStorage.getItem('sp_mpaddr') || ''; } catch (e) { /* storage off */ }
   const served = /^https?:$/.test(location.protocol);
   if (served) { addrEl.value = location.host; addrEl.placeholder = location.host; }
+  // An HTTPS copy of the game (e.g. the online solo demo) cannot open ws:// connections to a LAN host: browsers block
+  // mixed content. Say so plainly instead of failing with a vague connection error.
+  if (location.protocol === 'https:') { $('mperr').textContent = 'This copy of the game is served over HTTPS (for example the online solo demo). Browsers block it from connecting to a LAN host — for co-op, open the host’s own address instead (http://<host-ip>:8787/, printed by "npm run lan").'; $('mperr').style.color = '#e8b04a'; }
   const q = /[?&]join=([A-Za-z0-9]{4,8})/.exec(location.search);
   if (q) { codeEl.value = q[1].toUpperCase(); H.openTab('mp'); }
   const msg = (t, bad) => { const e = L.code ? $('mpmsg') : $('mperr'); e.textContent = t || ''; e.style.color = bad ? '#ff7a6a' : '#9fe8b0'; };
@@ -132,7 +135,13 @@ export function initLobby(G, H) {
   $('mpleave').onclick = () => L.leave();
   $('mpready').onclick = () => { const me = L.me(); if (me) net.send({ t: 'ready', ready: !me.ready }); };
   $('mpstart').onclick = () => net.send({ t: 'start' });
-  $('mpcopy').onclick = () => { const el = $('mplink'); el.select(); try { navigator.clipboard.writeText(el.value); msg('Invitation link copied'); } catch (e) { document.execCommand && document.execCommand('copy'); } };
+  // Clipboard API where the page is a secure context (localhost); plain-HTTP LAN pages fall back to a selection copy.
+  $('mpcopy').onclick = async () => {
+    const el = $('mplink'), text = el.value; let ok = false;
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) { try { await navigator.clipboard.writeText(text); ok = true; } catch (e) { ok = false; } }
+    if (!ok) { el.focus(); el.select(); el.setSelectionRange(0, text.length); try { ok = !!(document.execCommand && document.execCommand('copy')); } catch (e) { ok = false; } }
+    msg(ok ? 'Invitation link copied' : 'Could not copy automatically — the link is selected above: press Ctrl+C (Cmd+C)', !ok);
+  };
   for (const k of ['map', 'mission', 'length', 'ai', 'ff']) $('mps_' + k).addEventListener('change', (ev) => { if (!L.leader) return; const s = { ...L.lobby.settings }; s[k] = k === 'ff' ? ev.target.checked : ev.target.value; net.send({ t: 'settings', settings: s }); });
   L.me = () => L.lobby && L.lobby.players.find((p) => p.id === L.id);
   L.inParty = () => !!L.code;
@@ -172,7 +181,7 @@ export function initLobby(G, H) {
   function onMsg(m) {
     switch (m.t) {
       case 'hello': L.lan = m.lan || []; L.port = m.port || L.port; return;
-      case 'joined': L.id = m.id; L.code = m.code; L.leader = m.leader; net.token = m.token; if (m.lan) L.lan = m.lan; if (m.port) L.port = m.port; view(); msg(m.resumed ? 'Reconnected' : L.leader ? 'Party created — share the code or the link below' : 'Joined the party'); return;
+      case 'joined': $('mperr').textContent = ''; L.id = m.id; L.code = m.code; L.leader = m.leader; net.token = m.token; if (m.lan) L.lan = m.lan; if (m.port) L.port = m.port; view(); msg(m.resumed ? 'Reconnected' : L.leader ? 'Party created — share the code or the link below' : 'Joined the party'); return;
       case 'lobby': L.lobby = m; render(); return;
       case 'err': if (m.code === 'GONE') { const t = m.msg || 'The party no longer exists'; if (G.mp) G.mp.abort(t); L.ended(t); return; } msg(m.msg || m.code, true); return;
       case 'closed': { const text = m.msg || 'The party has ended'; if (G.mp) G.mp.abort(text); L.ended(text); return; }
@@ -210,8 +219,10 @@ export function createSession(G, H, L, start) {
   const score = (id) => { if (!S.scores.has(id)) S.scores.set(id, { kills: 0, shots: 0, hits: 0, heads: 0, revives: 0, downs: 0 }); return S.scores.get(id); };
   for (const p of start.players) score(p.id);
 
-  // called by startMission once the scene exists
+  // called by startMission once the scene exists and G.player is THIS machine's operator
+  let me = null;
   S.ready = () => {
+    me = G.player; G.localPlayer = me; // stable: hostAI temporarily points G.player at each guard's target
     for (const p of others) S.players.set(p.id, new RemotePlayer(G, p));
     if (host) wrapHost();
     send({ t: 'loaded' });
@@ -226,11 +237,12 @@ export function createSession(G, H, L, start) {
   };
   S.abort = (text) => { if (S.phase === 'over') return; S.phase = 'over'; H.partyEnded(text); };
   S.request = (o) => { if (host) handleAct(meId, o); else send({ t: 'act', ...o }); };
-  const queue = (e) => { S.ev.push(e); };
+  const queue = (e) => { if (S.phase !== 'disposed') S.ev.push(e); };
   S.flush = () => { if (S.ev.length) { send({ t: 'ev', l: S.ev }); S.ev = []; } };
 
   // ------------------------------------------------------------------ AI targets (host)
-  const local = () => G.player;
+  const local = () => me || G.player; // never the guard's current target (see hostAI)
+  S.me = () => local();
   const standing = () => { const out = []; const P = local(); if (!P.downed && !P.kia) out.push(P); for (const rp of S.players.values()) if (!rp.dead) out.push(rp); return out; };
   S.standing = standing;
   const DEAD = { dead: true, pos: new THREE.Vector3(0, -50, 0), eyePos: new THREE.Vector3(0, -50, 0), vel: new THREE.Vector3(), height: 1.7, crouch: false, speed: 0, leanX: 0, leanZ: 0, damage() {} };
@@ -242,16 +254,17 @@ export function createSession(G, H, L, start) {
     let f = list.includes(e.focus) ? e.focus : null;
     if (!f || e.percT - dt <= 0) {
       let best = null, bd = 1e9, keep = false;
-      for (const p of list) { G.player = p; const vis = e.canSee(); const d = Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z); if (vis) { if (p === f) keep = true; if (d < bd) { bd = d; best = p; } } }
+      for (const p of list) { G.player = p; const vis = e.canSee(); /* hostAI restores G.player */ const d = Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z); if (vis) { if (p === f) keep = true; if (d < bd) { bd = d; best = p; } } }
       if (!keep) f = best || f || list.reduce((a, p) => (Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z) < Math.hypot(a.pos.x - e.pos.x, a.pos.z - e.pos.z) ? p : a), list[0]);
     }
     return (e.focus = f);
   };
   S.hostAI = (dt) => {
     const P = local(), list = standing();
-    for (const e of G.enemies) { if (!e.dead) G.player = S.focusFor(e, list, dt); e.update(dt); recordHist(e); }
-    for (const c of G.civs) { G.player = civTarget(c, list) || P; c.update(dt); }
-    G.player = P;
+    try { // guard / civilian code reads G.player as "the operator I am dealing with"; always restored, even on errors
+      for (const e of G.enemies) { G.player = e.dead ? P : S.focusFor(e, list, dt); e.update(dt); recordHist(e); }
+      for (const c of G.civs) { G.player = civTarget(c, list) || P; c.update(dt); }
+    } finally { G.player = P; }
     // footsteps of teammates reach the guards like the host's own
     for (const rp of S.players.values()) { if (rp.dead || rp.crouch) continue; if (rp.speed > 2.5 && (rp.stepT += dt * rp.speed) > 2.2) { rp.stepT = 0; G.sound(rp.pos, rp.speed > 5.5 ? 13 : 6.5, 'step'); } }
   };
@@ -321,10 +334,13 @@ export function createSession(G, H, L, start) {
   S.localZero = () => { if (host) setDown(meId); }; // the host's own operator reached 0 HP
 
   // ------------------------------------------------------------------ host: wrap shared services so clients hear about them
+  let unwrap = null;
   function wrapHost() {
-    const toast0 = G.toast, say0 = G.say, sec0 = G.onSecurity, kill0 = G.onKill;
+    const toast0 = G.toast, say0 = G.say, sec0 = G.onSecurity, kill0 = G.onKill, spawn0 = G.onSpawnEnemy;
+    unwrap = () => { G.toast = toast0; G.say = say0; G.onSecurity = sec0; G.onKill = kill0; G.onSpawnEnemy = spawn0; unwrap = null; };
     G.toast = (m, t) => { toast0(m, t); queue({ k: 'toast', m, d: t }); };
-    G.say = (e, text) => { say0(e, text); queue({ k: 'say', x: r2(e.pos.x), z: r2(e.pos.z), m: text }); };
+    // radio: the host hears it relative to its own operator, not the guard's current target
+    G.say = (e, text) => { const cur = G.player; G.player = local(); try { say0(e, text); } finally { G.player = cur; } queue({ k: 'say', x: r2(e.pos.x), z: r2(e.pos.z), m: text }); };
     G.onSecurity = (level, m) => { sec0(level, m); queue({ k: 'sec', l: level, m: m || '' }); };
     G.onKill = (e) => { kill0(e); const by = S.shooter; if (by != null) score(by).kills++; queue({ k: 'kill', i: G.enemies.indexOf(e), by: by == null ? -1 : by }); };
     G.onSpawnEnemy = (e) => { if (S.phase === 'live') queue({ k: 'sp', i: G.enemies.indexOf(e), x: r2(e.pos.x), z: r2(e.pos.z), ty: e.typeId, d: e.duty }); };
@@ -594,9 +610,12 @@ export function createSession(G, H, L, start) {
     const Mi = G.mission, ex = Mi.def.exit.pos, team = standing();
     if (Mi.failed) return { win: false, reason: Mi.failed };
     if (!team.length) return { win: false, reason: 'ALL OPERATORS DOWN' };
+    // a downed teammate who is still connected must be revived (or bleed out) before the team can leave
+    const downed = [...S.players.values()].filter((rp) => rp.downed && rp.connected && !rp.left).map((rp) => rp.name);
+    if (local().downed) downed.push(S.name(meId));
     const at = team.filter((p) => Math.hypot(p.pos.x - ex[0], p.pos.z - ex[2]) < C.EXTRACT_R);
-    S.extract = [at.length, team.length];
-    if (Mi.complete && at.length === team.length && Mi.civNear()) return { win: true };
+    S.extract = [at.length, team.length, downed.length, downed[0] || ''];
+    if (Mi.complete && !downed.length && at.length === team.length && Mi.civNear()) return { win: true };
     return null;
   };
   S.finish = (win, reason) => {
@@ -616,6 +635,10 @@ export function createSession(G, H, L, start) {
     cam.position.set(rp.view.x - Math.sin(rp.renderYaw || 0) * -0.25, rp.view.y + 0.25, rp.view.z - Math.cos(rp.renderYaw || 0) * -0.25); cam.rotation.set(rp.renderPitch || 0, rp.renderYaw || 0, 0);
     return true;
   };
-  S.dispose = () => { for (const rp of S.players.values()) rp.dispose(); S.players.clear(); };
+  S.dispose = () => {
+    if (unwrap) unwrap();
+    for (const rp of S.players.values()) rp.dispose(); S.players.clear(); S.ev = []; S.snaps = []; S.phase = 'disposed';
+    if (G.localPlayer === me) G.localPlayer = null; me = null;
+  };
   return S;
 }

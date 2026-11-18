@@ -1,6 +1,7 @@
 // LAN server protocol and safety checks with raw WebSocket clients (Node 22 built-in WebSocket) against a real
 // server process. No browser. Usage: node tools/server-test.cjs
 const path = require('path'), http = require('http'), net = require('net'), { spawn } = require('child_process');
+if (typeof WebSocket !== 'function') { console.error('tools/server-test.cjs needs Node 22 or newer (built-in WebSocket client). Hosting with server/lan.cjs needs only Node 18+.'); process.exit(2); }
 const PORT = 19000 + Math.floor(Math.random() * 500);
 const results = []; const check = (n, ok, info) => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${info !== undefined ? '  — ' + JSON.stringify(info) : ''}`); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -10,7 +11,22 @@ const get = (p) => new Promise((res) => { const s = net.connect(PORT, '127.0.0.1
   const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'lan.cjs'), '--port', String(PORT), '--quiet'], { stdio: 'ignore' });
   await wait(700);
   try {
-    const { isLocalAddress } = require('../server/lan.cjs');
+    const { isLocalAddress, lanAddresses } = require('../server/lan.cjs');
+    // LAN address discovery (v2.4.1 regression: a comment swallowed out.push and the function returned early / undefined)
+    const v4 = (address, extra) => ({ address, family: 'IPv4', internal: false, ...extra });
+    const la = {
+      one: lanAddresses({ eth0: [v4('192.168.1.20')] }),
+      numeric: lanAddresses({ eth0: [v4('10.0.0.7', { family: 4 })] }),
+      many: lanAddresses({ eth0: [v4('192.168.1.20'), v4('fe80::1', { family: 'IPv6' })], wlan0: [v4('10.1.2.3', { family: 4 })], docker0: [v4('172.17.0.1')] }),
+      excluded: lanAddresses({ lo: [v4('127.0.0.1', { internal: true }), { address: '::1', family: 'IPv6', internal: true }], eth1: [{ address: 'fd00::5', family: 'IPv6', internal: false }, { address: 'fe80::2', family: 6, internal: false }] }),
+      none: lanAddresses({}), nullish: lanAddresses(null), badList: lanAddresses({ eth0: null, eth1: 'x' }),
+      system: lanAddresses(),
+    };
+    check('LAN discovery: an external IPv4 adapter is returned', JSON.stringify(la.one) === JSON.stringify([{ name: 'eth0', address: '192.168.1.20' }]), la.one);
+    check('LAN discovery: numeric family 4 (Node 18.0-18.3) works', la.numeric.length === 1 && la.numeric[0].address === '10.0.0.7', la.numeric);
+    check('LAN discovery: addresses from several adapters are all collected, in order', JSON.stringify(la.many.map((x) => x.address)) === JSON.stringify(['192.168.1.20', '10.1.2.3', '172.17.0.1']), la.many);
+    check('LAN discovery: internal and IPv6-only adapters are excluded', Array.isArray(la.excluded) && la.excluded.length === 0, la.excluded);
+    check('LAN discovery: no matching adapter (or malformed input) returns an empty array, never undefined', [la.none, la.nullish, la.badList].every((x) => Array.isArray(x) && x.length === 0) && Array.isArray(la.system), [la.none, la.nullish, la.badList]);
     check('address policy: loopback / private / link-local allowed, public refused', ['127.0.0.1', '::1', '10.1.2.3', '172.16.0.9', '172.31.255.1', '192.168.0.4', '169.254.3.3', '::ffff:192.168.1.2', 'fd12:3456::1'].every(isLocalAddress) && !['8.8.8.8', '172.32.0.1', '1.1.1.1', '::ffff:8.8.4.4', '2001:db8::1'].some(isLocalAddress));
     check('static files: game served, everything else (traversal, source, server code) refused', (await get('/')) === 200 && (await get('/dist/game.js')) === 200 && (await get('/../package.json')) === 404 && (await get('/%2e%2e/package.json')) === 404 && (await get('/server/lan.cjs')) === 404 && (await get('/src/main.js')) === 404);
     const a = await W(), b = await W();

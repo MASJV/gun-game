@@ -1,5 +1,8 @@
 # Smoothness, input responsiveness and visual comfort (v2.2)
 
+> **Historical record — v2.2 smoothness investigation.** Kept for reference; details (branch names, test counts, file names) describe the project at that time. Current state: [README](../README.md) and [MULTIPLAYER.md](MULTIPLAYER.md).
+
+
 Branch `smoothness`, merged into `main`. This documents what was measured, what was actually wrong, what changed,
 and what could **not** be verified here.
 

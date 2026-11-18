@@ -1,5 +1,8 @@
 # Controls and movement feel (V2.3)
 
+> **Historical record — v2.3 controls refinement report.** Kept for reference; details (branch names, test counts, file names) describe the project at that time. Current state: [README](../README.md) and [MULTIPLAYER.md](MULTIPLAYER.md).
+
+
 V2.3 refines how SHADOW PROTOCOL feels to aim and move. Gameplay rules are unchanged. Every number below comes from
 `node tools/feel.cjs <label>`. It drives the real game headless at fixed frame rates and writes
 `docs/perf/feel-before.json` (v2.2.0) and `docs/perf/feel-after.json` (v2.3.0). These are simulation

@@ -267,7 +267,12 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     for (const ai of ['recruit', 'tactical', 'elite']) { R[ai] = await fight(ai); console.log('   ', ai, JSON.stringify(R[ai])); }
     for (const ai of ['recruit', 'tactical', 'elite']) check(`ai/${ai}: never fires without sight (other than a short suppressive burst)`, R[ai].noSightShots === 0, [R[ai].shots, R[ai].suppressive]);
     check('ai: every level uses cover and lean-peeks', ['recruit', 'tactical', 'elite'].every((a) => R[a].pct.COVER > 5 && R[a].leanFrames > 20), [R.recruit.pct.COVER, R.tactical.pct.COVER, R.elite.pct.COVER]);
-    check('ai: tactical and elite spend more time in cover than recruits', R.tactical.pct.COVER > R.recruit.pct.COVER && R.elite.pct.COVER > R.recruit.pct.COVER);
+    // Cover share is a statistical property of one random fight. Fights vary (CI once saw recruit 47 % vs tactical 46 %,
+    // while ten local runs gave recruit 34-46 %, tactical 50-63 %, elite 52-62 %), so compare the mean of two fights.
+    // One fight's cover share varies by about ±5 points (recruit 37-51 %, tactical 42-61 %, elite 50-59 % over six
+    // local runs) around a gap of about 9, so the profiles are compared on the mean of six fights each.
+    const C2 = {}; for (const ai of ['recruit', 'tactical', 'elite']) { let sum = R[ai].pct.COVER; for (let k = 1; k < 6; k++) sum += (await fight(ai)).pct.COVER; C2[ai] = +(sum / 6).toFixed(1); }
+    check('ai: tactical and elite spend more time in cover than recruits (mean of six fights each)', C2.tactical > C2.recruit && C2.elite > C2.recruit, C2);
     check('ai: peeks are short (about a second) and irregular, not a fixed rhythm', ['recruit', 'tactical', 'elite'].every((a) => R[a].peekSd > 0.2 && R[a].peekMean < 2.2), [R.recruit.peekMean, R.tactical.peekMean, R.elite.peekMean, R.recruit.peekSd, R.tactical.peekSd, R.elite.peekSd]);
     check('ai: objective stays defended during the fight', R.tactical.defenders >= 2 && R.elite.defenders >= 2, [R.recruit.defenders, R.tactical.defenders, R.elite.defenders]);
     check('ai: security escalates to ALERT or LOCKDOWN', R.tactical.sec >= 2 && R.elite.sec >= 2, [R.recruit.sec, R.tactical.sec, R.elite.sec]);
@@ -304,6 +309,9 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       const G = window.__SP, P = G.player, o = {}, V = G.v1.constructor; calm(); P.pos.set(44, 0, 28); P.hp = 1e6;
       const [a, b2] = G.enemies; G.enemies.slice(2).forEach((e) => { e.dead = true; e.found = true; });
       [a, b2].forEach((e, i) => { e.release(); e.pos.set(30 + i * 2, 0, -15); e.yaw = e.baseYaw = 0; e.path = null; e.waitT = 1e9; e.state = 'PATROL'; e.sync(); e.ch.refresh(); });
+      // Tactical guards deliberately freeze on 5 % of grenade warnings. This check is about the scatter itself, so that
+      // one roll is pinned (both guards freezing at once failed CI run 10).
+      [a, b2].forEach((e) => { const ev = e.evade.bind(e); e.evade = (x, z) => { const r = Math.random; Math.random = () => 0; try { return ev(x, z); } finally { Math.random = r; } }; });
       G.spawnGrenade('frag', new V(31, 1.2, -14.5), new V(0, 0, 0), 'player'); let moved = 0; sim(2.6, () => { if (a.state === 'MOVE' || b2.state === 'MOVE') moved++; });
       o.evadeFrames = moved; sim(1); o.dist = [a, b2].map((e) => +Math.hypot(e.pos.x - 31, e.pos.z + 14.5).toFixed(1)); o.alive = [a, b2].filter((e) => !e.dead).length;
       // a guard in cover with a stale contact does not stay tucked forever
@@ -344,7 +352,8 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       o.start = { n: G.enemies.length, objective: G.enemies.filter((e) => e.duty === 'objective').length, posts: G.enemies.filter((e) => e.duty === 'post').length, patrols: G.enemies.filter((e) => e.duty === 'patrol').length, level: G.sec.level };
       P.pos.set(44, 0, 28); P.crouchToggle = true; calm(); sim(5); o.quiet = G.sec.level;
       // a body found by a patrol is radioed in: ALERT with a report at the body, not at the player
-      const [a, b2] = G.enemies.filter((e) => e.duty === 'patrol'); a.pos.set(41, 0, -19); a.sync(); a.damage(999, P.pos, 'torso'); b2.release(); b2.pos.set(41, 0, -12.5); b2.yaw = b2.baseYaw = 0; b2.path = null; b2.waitT = 6; b2.state = 'PATROL'; b2.sync();
+      const [a, b2] = G.enemies.filter((e) => e.duty === 'patrol'); a.pos.set(41, 0, -19); a.sync(); a.damage(999, P.pos, 'torso'); b2.release(); b2.pos.set(41, 0, -12.5); b2.yaw = b2.baseYaw = 0; b2.path = null; b2.waitT = 6; b2.state = 'PATROL'; b2.sync(); b2.ch.refresh();
+      b2.pr = { ...b2.pr, radioFail: 0 }; // Tactical radio calls fail 5 % of the time by design; this check is about the report path, so the roll is pinned (it made the suite fail ~1 run in 20)
       G.enemies.forEach((e) => { if (e !== b2) e.bodyT = 1e9; }); sim(12, () => G.sec.level < 2);
       o.body = { level: G.sec.level, report: G.sec.report && [Math.round(G.sec.report.x), Math.round(G.sec.report.z)], playerErr: G.sec.report ? Math.round(Math.hypot(G.sec.report.x - P.pos.x, G.sec.report.z - P.pos.z)) : -1 };
       o.orders = G.enemies.filter((e) => !e.dead).map((e) => e.duty[0] + ':' + (e.order ? e.order.type : e.state === 'INVESTIGATE' || e.state === 'SUSPICIOUS' ? 'investigate' : e.holdPost ? 'defend' : e.state));
@@ -893,6 +902,23 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     });
     const fr = await p.evaluate(() => window.__SP.frames); await p.waitForTimeout(800); const fr2 = await p.evaluate(() => window.__SP.frames);
     check('robustness: WebGL context loss shows a message, restoring the context clears it and frames continue', lost && lost[0][0] === true && lost[0][1] === 'block' && /DEVICE LOST/.test(lost[0][2]) && lost[1][0] === false && lost[1][1] === 'none' && fr2 > fr, [lost, fr2 - fr]);
+  });
+
+  await run('resources', async () => {
+    // v2.4.1: returning to the menu used to leave ~30 geometries and ~11 textures per mission on the GPU
+    await start('warehouse', 'tactical'); await p.evaluate(() => { document.getElementById('pmenu').click(); });
+    const r = await p.evaluate(async () => {
+      const G = window.__SP, frame = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res))), out = [];
+      await frame(); const base = { ...G.renderer.info.memory };
+      for (let i = 0; i < 4; i++) {
+        Object.assign(G.sel, { map: i % 2 ? 'warehouse' : 'forest', mission: i % 2 ? 'rescue' : 'capture', length: 'standard', layout: null, mode: 'mission', seed: 40 + i });
+        document.getElementById('start').click(); for (let k = 0; k < 20; k++) G.step(1 / 60); await frame(); const inMission = { ...G.renderer.info.memory };
+        if (G.state === 'playing') G.state = 'paused'; document.getElementById('pmenu').click(); await frame(); out.push([inMission, { ...G.renderer.info.memory }]);
+      }
+      return { base, out };
+    });
+    const menu = r.out.map((x) => x[1]), mis = r.out.map((x) => x[0]);
+    check('resources: GPU geometries and textures are released when a mission ends (no growth over repeated missions)', menu.every((m) => m.geometries <= r.base.geometries + 2 && m.textures <= r.base.textures + 2) && mis[2].geometries <= mis[0].geometries + 5 && mis[3].geometries <= mis[1].geometries + 5 && mis[2].textures <= mis[0].textures + 3, r);
   });
 
   await run('stability', async () => {

@@ -1,0 +1,44 @@
+name: Release
+
+# Pushing a tag such as v2.4.1 publishes a GitHub Release with a ready-to-run ZIP:
+# the solo game (index.html + dist/) and the LAN host (server/ + package.json), plus the docs it needs.
+# No node_modules, sources or test artifacts.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches package.json
+        run: |
+          v="$(node -p "require('./package.json').version")"
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match package.json version $v"; exit 1; }
+
+      - name: Build the ZIP
+        run: |
+          d="shadow-protocol-$GITHUB_REF_NAME"
+          mkdir -p "$d/dist" "$d/server" "$d/docs/media"
+          cp index.html LICENSE package.json README.md RELEASE_NOTES.md CLAUDE.md GAME_PLAN.md "$d/"
+          cp dist/game.js dist/assets.js "$d/dist/"
+          cp server/lan.cjs "$d/server/"
+          cp docs/*.md "$d/docs/"
+          cp docs/media/gameplay-solo.png docs/media/gameplay-coop.png "$d/docs/media/"
+          node tools/check-links.cjs "$d"
+          printf 'SHADOW PROTOCOL %s\n\nSolo: open index.html in Chrome, Edge or Firefox.\nLAN co-op: with Node 18+, run  node server/lan.cjs  (or npm run lan) in this folder and open the address it prints.\nSee README.md and docs/MULTIPLAYER.md.\n' "$GITHUB_REF_NAME" > "$d/PLAY.txt"
+          zip -r "$d.zip" "$d"
+          unzip -l "$d.zip"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$(awk "/^## $GITHUB_REF_NAME/{f=1;next} /^## /{f=0} f" RELEASE_NOTES.md)"
+          gh release create "$GITHUB_REF_NAME" "shadow-protocol-$GITHUB_REF_NAME.zip" --title "SHADOW PROTOCOL $GITHUB_REF_NAME" --notes "$notes"
