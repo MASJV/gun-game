@@ -344,7 +344,8 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
       o.start = { n: G.enemies.length, objective: G.enemies.filter((e) => e.duty === 'objective').length, posts: G.enemies.filter((e) => e.duty === 'post').length, patrols: G.enemies.filter((e) => e.duty === 'patrol').length, level: G.sec.level };
       P.pos.set(44, 0, 28); P.crouchToggle = true; calm(); sim(5); o.quiet = G.sec.level;
       // a body found by a patrol is radioed in: ALERT with a report at the body, not at the player
-      const [a, b2] = G.enemies.filter((e) => e.duty === 'patrol'); a.pos.set(41, 0, -19); a.sync(); a.damage(999, P.pos, 'torso'); b2.release(); b2.pos.set(41, 0, -12.5); b2.yaw = b2.baseYaw = 0; b2.path = null; b2.waitT = 6; b2.state = 'PATROL'; b2.sync();
+      const [a, b2] = G.enemies.filter((e) => e.duty === 'patrol'); a.pos.set(41, 0, -19); a.sync(); a.damage(999, P.pos, 'torso'); b2.release(); b2.pos.set(41, 0, -12.5); b2.yaw = b2.baseYaw = 0; b2.path = null; b2.waitT = 6; b2.state = 'PATROL'; b2.sync(); b2.ch.refresh();
+      b2.pr = { ...b2.pr, radioFail: 0 }; // Tactical radio calls fail 5 % of the time by design; this check is about the report path, so the roll is pinned (it made the suite fail ~1 run in 20)
       G.enemies.forEach((e) => { if (e !== b2) e.bodyT = 1e9; }); sim(12, () => G.sec.level < 2);
       o.body = { level: G.sec.level, report: G.sec.report && [Math.round(G.sec.report.x), Math.round(G.sec.report.z)], playerErr: G.sec.report ? Math.round(Math.hypot(G.sec.report.x - P.pos.x, G.sec.report.z - P.pos.z)) : -1 };
       o.orders = G.enemies.filter((e) => !e.dead).map((e) => e.duty[0] + ':' + (e.order ? e.order.type : e.state === 'INVESTIGATE' || e.state === 'SUSPICIOUS' ? 'investigate' : e.holdPost ? 'defend' : e.state));

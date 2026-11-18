@@ -17,7 +17,16 @@ A polish and fix release of the v2.4 LAN co-op, prepared for public sharing. No 
   no longer feed events into old sessions.
 - **"Copy link".** It now reports success only when the link was really copied, with a working fallback on
   plain-HTTP LAN pages.
-- **Node 18.0–18.3.** The server now finds LAN addresses on these versions.
+- **LAN address discovery.** The server now always finds and lists the host's network addresses, including on Node
+  18.0–18.3, which reports the address family as a number. A defect introduced while preparing this release had
+  stopped any address from being collected; it was caught in review and fixed before release. Regression checks
+  include the invitation link from a party created on localhost.
+
+**Other fixes:**
+
+- **GPU memory across missions.** Every mission left about 30 geometries and 11 textures allocated after returning to
+  the menu, so long sessions kept growing GPU memory. Everything a mission allocated is now released, and a
+  regression check confirms the renderer returns to its menu baseline.
 
 **Project:**
 
