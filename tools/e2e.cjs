@@ -9,6 +9,8 @@ const path = require('path'), fs = require('fs');
 const { chromium } = require('playwright');
 const args = process.argv.slice(2), opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 const filter = args[0] && !args[0].startsWith('--') ? args[0] : '', shots = opt('--shots'), profile = opt('--profile') || 'default';
+// E2E_TRACE=1 prints timestamped phase markers with browser memory (diagnostics only)
+const T0 = Date.now(), trace = (msg) => { if (process.env.E2E_TRACE) { const mb = require('child_process').execSync("ps -eo rss,args | grep chrome-headless | grep -v grep | awk '{s+=$1} END {print int(s/1024)}'").toString().trim(); console.error(`[trace ${((Date.now() - T0) / 1000).toFixed(1)}s chrome=${mb}MB] ${msg}`); } };
 const SEEDS = (opt('--seeds') || '7,1234').split(',').map(Number);
 const PROFILES = { default: {}, low: { quality: 'low', adaptive: false }, high: { quality: 'high', target: 'refresh', cam: 0, sensAds: 0.7, sprintFov: false }, lowlat: { lowlat: true, quality: 'med' } };
 
@@ -27,7 +29,7 @@ const PROFILES = { default: {}, low: { quality: 'low', adaptive: false }, high: 
   const sceneStats = async (label) => {
     const f0 = await p.evaluate(() => { document.body.classList.add('e2e-nohud'); return window.__SP.frames; });
     await p.waitForFunction((f) => window.__SP.frames >= f + 3, f0, { timeout: 60000 });
-    const buf = await p.screenshot({ timeout: 240000 });
+    trace(label + ': frames ok, screenshot'); const buf = await p.screenshot({ timeout: 240000 }); trace(label + ': screenshot done');
     if (shots) { fs.mkdirSync(shots, { recursive: true }); fs.writeFileSync(path.join(shots, label + '.png'), buf); }
     const st = await p.evaluate(async (b64) => {
       document.body.classList.remove('e2e-nohud');
@@ -102,7 +104,7 @@ const PROFILES = { default: {}, low: { quality: 'low', adaptive: false }, high: 
     // real menu: Play tab, map, mission, length, DEPLOY; then the briefing's GO button
     await p.click('[data-tab="play"]'); await p.click(`.opts[data-k="map"] [data-v="${map}"]`); await p.click(`.opts[data-k="mission"] [data-v="${type}"]`); await p.click(`.opts[data-k="length"] [data-v="${len}"]`);
     await p.evaluate((s) => { window.__SP.sel.seed = s; }, seed); // deterministic seed (the menu itself always rolls a random one)
-    await p.click('#start'); await p.waitForFunction('window.__SP.state === "brief"', null, { timeout: 60000 });
+    trace(id + ': start'); await p.click('#start'); await p.waitForFunction('window.__SP.state === "brief"', null, { timeout: 60000 }); trace(id + ': brief');
     const brief = await sceneStats(id.replace(/\//g, '_') + '_brief');
     await p.click('#brgo'); await p.waitForFunction('window.__SP.state === "playing"', null, { timeout: 30000 });
     const st = await sceneStats(id.replace(/\//g, '_') + '_spawn');
@@ -122,7 +124,7 @@ const PROFILES = { default: {}, low: { quality: 'low', adaptive: false }, high: 
     const k0 = await p.evaluate(() => window.__SP.player.pos.toArray()); const fr = await p.evaluate(() => window.__SP.frames); await p.keyboard.down('KeyW'); await p.waitForFunction((f) => window.__SP.frames >= f + 6, fr, { timeout: 60000 }); await p.keyboard.up('KeyW');
     const k1 = await p.evaluate(() => window.__SP.player.pos.toArray()); const realMove = Math.hypot(k1[0] - k0[0], k1[2] - k0[2]);
     check(`${id}: briefing + spawn render a visible scene, camera level on the insertion heading, real W key moves`, visible(brief) && visible(st) && cam.finite && cam.eyeOk && Math.abs(cam.view[0]) < 1e-3 && Math.abs(cam.view[1]) < 1e-3 && realMove > 0.2 && (!resume || (resume[2] === 'playing' && Math.abs(resume[0]) < 1e-3 && Math.abs(resume[1]) < 1e-3)), { brief, spawn: st, cam, resume, realMove: +realMove.toFixed(2) });
-    const R = await p.evaluate(() => window.e2ePlay());
+    trace(id + ': e2ePlay start'); const R = await p.evaluate(() => window.e2ePlay()); trace(id + ': e2ePlay end');
     totals.assists += R.assists; if (R.state === 'won') totals.completed++;
     const promptsOk = R.stages.every((k, i) => R.prompts.some((t, j) => R.promptStage[j] === i && t && t.length > 3)); // the HVT may run on the first approach
     check(`${id}: objective sequence [${R.stages.join(' → ')}] completed on foot, extraction won`, R.enemies > 0 && R.moved > 0.5 && promptsOk && R.complete && R.state === 'won' && /COMPLETE/.test(R.end) && (R.civ == null || R.civFollow < 9), { enemies: R.enemies, moved: R.moved, prompts: R.prompts, log: R.log, reached: R.reached, assists: R.assists, state: R.state, civFollow: R.civFollow });
