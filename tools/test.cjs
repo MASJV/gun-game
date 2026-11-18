@@ -267,7 +267,10 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); conso
     for (const ai of ['recruit', 'tactical', 'elite']) { R[ai] = await fight(ai); console.log('   ', ai, JSON.stringify(R[ai])); }
     for (const ai of ['recruit', 'tactical', 'elite']) check(`ai/${ai}: never fires without sight (other than a short suppressive burst)`, R[ai].noSightShots === 0, [R[ai].shots, R[ai].suppressive]);
     check('ai: every level uses cover and lean-peeks', ['recruit', 'tactical', 'elite'].every((a) => R[a].pct.COVER > 5 && R[a].leanFrames > 20), [R.recruit.pct.COVER, R.tactical.pct.COVER, R.elite.pct.COVER]);
-    check('ai: tactical and elite spend more time in cover than recruits', R.tactical.pct.COVER > R.recruit.pct.COVER && R.elite.pct.COVER > R.recruit.pct.COVER);
+    // Cover share is a statistical property of one random fight. Fights vary (CI once saw recruit 47 % vs tactical 46 %,
+    // while ten local runs gave recruit 34-46 %, tactical 50-63 %, elite 52-62 %), so compare the mean of two fights.
+    const C2 = {}; for (const ai of ['recruit', 'tactical', 'elite']) { const second = await fight(ai); C2[ai] = (R[ai].pct.COVER + second.pct.COVER) / 2; }
+    check('ai: tactical and elite spend more time in cover than recruits (mean of two fights each)', C2.tactical > C2.recruit && C2.elite > C2.recruit, C2);
     check('ai: peeks are short (about a second) and irregular, not a fixed rhythm', ['recruit', 'tactical', 'elite'].every((a) => R[a].peekSd > 0.2 && R[a].peekMean < 2.2), [R.recruit.peekMean, R.tactical.peekMean, R.elite.peekMean, R.recruit.peekSd, R.tactical.peekSd, R.elite.peekSd]);
     check('ai: objective stays defended during the fight', R.tactical.defenders >= 2 && R.elite.defenders >= 2, [R.recruit.defenders, R.tactical.defenders, R.elite.defenders]);
     check('ai: security escalates to ALERT or LOCKDOWN', R.tactical.sec >= 2 && R.elite.sec >= 2, [R.recruit.sec, R.tactical.sec, R.elite.sec]);
